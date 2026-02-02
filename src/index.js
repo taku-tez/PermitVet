@@ -16,13 +16,14 @@ const { scanGCPRecommender } = require('./scanners/gcp-recommender.js');
 const { scanGCPAdvanced } = require('./scanners/gcp-advanced.js');
 const { scanGCPOrganization } = require('./scanners/gcp-organization.js');
 const { scanAzureAdvanced } = require('./scanners/azure-advanced.js');
+const { scanAzureTenant } = require('./scanners/azure-tenant.js');
 const { scanOCI } = require('./scanners/oracle-cloud.js');
 const { scanKubernetesRBAC } = require('./scanners/kubernetes.js');
 const { detectPrivescPaths, buildAttackGraph, AWS_PRIVESC_TECHNIQUES, AZURE_PRIVESC_TECHNIQUES, GCP_PRIVESC_TECHNIQUES } = require('./scanners/privesc-detector.js');
 const { mapToCompliance, generateComplianceSummary, generateSARIF, generateHTMLReport } = require('./compliance.js');
 const { Reporter } = require('./reporter.js');
 
-const version = '0.9.3';
+const version = '0.11.0';
 
 /**
  * Scan cloud provider for IAM permission issues
@@ -73,18 +74,28 @@ async function scan(provider, options = {}) {
     if (options.azure !== false) {
       console.log('\n━━━ Azure ━━━');
       try {
-        const azureFindings = await scanAzure(options);
-        findings.push(...azureFindings);
+        // Tenant/Management Group level scan
+        if (options.tenant || options.managementGroup || options.allSubscriptions) {
+          console.log('  Running tenant/management-group-level scan...');
+          const tenantFindings = await scanAzureTenant(options);
+          findings.push(...tenantFindings);
+        }
         
-        // Enhanced: Entra ID + PIM + Advanced
-        if (options.enhanced !== false) {
-          console.log('  Running enhanced checks (Entra ID + PIM)...');
-          const entraFindings = await scanEntraID(options);
-          findings.push(...entraFindings);
+        // Subscription-level scan
+        if (options.subscription || (!options.tenant && !options.managementGroup && !options.allSubscriptions)) {
+          const azureFindings = await scanAzure(options);
+          findings.push(...azureFindings);
           
-          console.log('  Running advanced checks (Management Groups, Policy)...');
-          const advancedFindings = await scanAzureAdvanced(options);
-          findings.push(...advancedFindings);
+          // Enhanced: Entra ID + PIM + Advanced
+          if (options.enhanced !== false) {
+            console.log('  Running enhanced checks (Entra ID + PIM)...');
+            const entraFindings = await scanEntraID(options);
+            findings.push(...entraFindings);
+            
+            console.log('  Running advanced checks (Management Groups, Policy)...');
+            const advancedFindings = await scanAzureAdvanced(options);
+            findings.push(...advancedFindings);
+          }
         }
       } catch (e) {
         console.log(`  ⚠️ Azure scan skipped: ${e.message}`);
@@ -173,17 +184,28 @@ async function scan(provider, options = {}) {
         break;
         
       case 'azure':
-        findings = await scanAzure(options);
+        // Tenant/Management Group level scan
+        if (options.tenant || options.managementGroup || options.allSubscriptions) {
+          console.log('  Running tenant/management-group-level scan...');
+          const tenantFindings = await scanAzureTenant(options);
+          findings.push(...tenantFindings);
+        }
         
-        // Enhanced: Entra ID + PIM + Advanced
-        if (options.enhanced !== false) {
-          console.log('  Running enhanced checks (Entra ID + PIM)...');
-          const entraFindings = await scanEntraID(options);
-          findings.push(...entraFindings);
+        // Subscription-level scan
+        if (options.subscription || (!options.tenant && !options.managementGroup && !options.allSubscriptions)) {
+          const subFindings = await scanAzure(options);
+          findings.push(...subFindings);
           
-          console.log('  Running advanced checks (Management Groups, Policy)...');
-          const advancedFindings = await scanAzureAdvanced(options);
-          findings.push(...advancedFindings);
+          // Enhanced: Entra ID + PIM + Advanced
+          if (options.enhanced !== false) {
+            console.log('  Running enhanced checks (Entra ID + PIM)...');
+            const entraFindings = await scanEntraID(options);
+            findings.push(...entraFindings);
+            
+            console.log('  Running advanced checks (Management Groups, Policy)...');
+            const advancedFindings = await scanAzureAdvanced(options);
+            findings.push(...advancedFindings);
+          }
         }
         break;
         

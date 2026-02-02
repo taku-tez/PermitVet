@@ -83,6 +83,15 @@ permitvet scan azure --subscription abc123-def456
 
 # Auto-detect subscription
 permitvet scan azure
+
+# Tenant-level scan (v0.11.0+)
+permitvet scan azure --tenant 00000000-0000-0000-0000-000000000000
+
+# Management group scan with all subscriptions
+permitvet scan azure --management-group mg-root --all-subscriptions
+
+# Scan all accessible subscriptions
+permitvet scan azure --all-subscriptions
 ```
 
 ### GCP

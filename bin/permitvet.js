@@ -32,6 +32,9 @@ Providers:
 Options:
   --profile <name>       AWS profile name
   --subscription <id>    Azure subscription ID
+  --tenant <id>          Azure tenant ID (tenant-wide scan)
+  --management-group <id> Azure management group ID
+  --all-subscriptions    Scan all subscriptions (Azure)
   --project <id>         GCP project ID
   --organization <id>    GCP organization ID (org-level scan)
   --folder <id>          GCP folder ID (folder-level scan)
@@ -54,6 +57,11 @@ Examples:
   permitvet scan gcp --organization 123456789
   permitvet scan gcp --organization 123456789 --all-projects
   permitvet scan gcp --folder 987654321 --all-projects
+
+  # Azure Tenant-level scan
+  permitvet scan azure --tenant 00000000-0000-0000-0000-000000000000
+  permitvet scan azure --management-group mg-root --all-subscriptions
+  permitvet scan azure --all-subscriptions
 
   # Scan all providers
   permitvet scan all
@@ -164,6 +172,12 @@ function parseOptions(args) {
       options.quiet = true;
     } else if (arg === '--subscription' && args[i + 1]) {
       options.subscription = args[++i];
+    } else if (arg === '--tenant' && args[i + 1]) {
+      options.tenant = args[++i];
+    } else if (arg === '--management-group' && args[i + 1]) {
+      options.managementGroup = args[++i];
+    } else if (arg === '--all-subscriptions') {
+      options.allSubscriptions = true;
     } else if (arg === '--project' && args[i + 1]) {
       options.project = args[++i];
     } else if (arg === '--organization' && args[i + 1]) {

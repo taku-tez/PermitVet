@@ -55,6 +55,11 @@ describe('Scanner Modules', () => {
     const { scanGCPOrganization } = require('../src/scanners/gcp-organization.js');
     assert.strictEqual(typeof scanGCPOrganization, 'function');
   });
+  
+  it('azure-tenant.js exports scanAzureTenant function', () => {
+    const { scanAzureTenant } = require('../src/scanners/azure-tenant.js');
+    assert.strictEqual(typeof scanAzureTenant, 'function');
+  });
 
 });
 

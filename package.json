@@ -1,6 +1,6 @@
 {
   "name": "@permitvet/cli",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Pure CIEM (Cloud Infrastructure Entitlement Management) - IAM security scanner for AWS, Azure, GCP, OCI, Kubernetes",
   "main": "src/index.js",
   "bin": {
@@ -44,19 +44,19 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@aws-sdk/client-accessanalyzer": "^3.0.0",
     "@aws-sdk/client-iam": "^3.0.0",
     "@aws-sdk/client-organizations": "^3.0.0",
-    "@aws-sdk/client-accessanalyzer": "^3.0.0",
     "@aws-sdk/client-sts": "^3.0.0",
-    "@azure/identity": "^4.0.0",
     "@azure/arm-authorization": "^9.0.0",
-    "@azure/arm-subscriptions": "^6.0.0",
     "@azure/arm-managementgroups": "^2.0.0",
-    "@microsoft/microsoft-graph-client": "^3.0.0",
-    "googleapis": "^140.0.0",
-    "@google-cloud/iam-credentials": "^3.0.0",
-    "@google-cloud/resource-manager": "^6.0.0",
+    "@azure/arm-subscriptions": "^6.0.0",
+    "@azure/identity": "^4.0.0",
+    "@google-cloud/iam-credentials": "^3.3.0",
+    "@google-cloud/resource-manager": "^6.2.1",
     "@kubernetes/client-node": "^1.0.0",
+    "@microsoft/microsoft-graph-client": "^3.0.0",
+    "googleapis": "^140.0.1",
     "oci-sdk": "^2.0.0"
   },
   "devDependencies": {
