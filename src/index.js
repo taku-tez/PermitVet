@@ -14,6 +14,7 @@ const { scanAWSAdvanced } = require('./scanners/aws-advanced.js');
 // const { scanAWSNetwork } = require('./scanners/aws-network.js');
 const { scanGCPRecommender } = require('./scanners/gcp-recommender.js');
 const { scanGCPAdvanced } = require('./scanners/gcp-advanced.js');
+const { scanGCPOrganization } = require('./scanners/gcp-organization.js');
 const { scanAzureAdvanced } = require('./scanners/azure-advanced.js');
 const { scanOCI } = require('./scanners/oracle-cloud.js');
 const { scanKubernetesRBAC } = require('./scanners/kubernetes.js');
@@ -94,18 +95,28 @@ async function scan(provider, options = {}) {
     if (options.gcp !== false) {
       console.log('\n━━━ GCP ━━━');
       try {
-        const gcpFindings = await scanGCP(options);
-        findings.push(...gcpFindings);
+        // Organization/Folder level scan
+        if (options.organization || options.folder) {
+          console.log('  Running organization/folder-level scan...');
+          const orgFindings = await scanGCPOrganization(options);
+          findings.push(...orgFindings);
+        }
         
-        // Enhanced: IAM Recommender + Advanced
-        if (options.enhanced !== false) {
-          console.log('  Running enhanced checks (IAM Recommender)...');
-          const recommenderFindings = await scanGCPRecommender(options);
-          findings.push(...recommenderFindings);
+        // Project-level scan
+        if (options.project || (!options.organization && !options.folder)) {
+          const gcpFindings = await scanGCP(options);
+          findings.push(...gcpFindings);
           
-          console.log('  Running advanced checks (Org Policy, VPC SC)...');
-          const advancedFindings = await scanGCPAdvanced(options);
-          findings.push(...advancedFindings);
+          // Enhanced: IAM Recommender + Advanced
+          if (options.enhanced !== false) {
+            console.log('  Running enhanced checks (IAM Recommender)...');
+            const recommenderFindings = await scanGCPRecommender(options);
+            findings.push(...recommenderFindings);
+            
+            console.log('  Running advanced checks (Org Policy, Hierarchy)...');
+            const advancedFindings = await scanGCPAdvanced(options);
+            findings.push(...advancedFindings);
+          }
         }
       } catch (e) {
         console.log(`  ⚠️ GCP scan skipped: ${e.message}`);
@@ -177,17 +188,28 @@ async function scan(provider, options = {}) {
         break;
         
       case 'gcp':
-        findings = await scanGCP(options);
+        // Organization/Folder level scan
+        if (options.organization || options.folder) {
+          console.log('  Running organization/folder-level scan...');
+          const orgFindings = await scanGCPOrganization(options);
+          findings.push(...orgFindings);
+        }
         
-        // Enhanced: IAM Recommender + Advanced
-        if (options.enhanced !== false) {
-          console.log('  Running enhanced checks (IAM Recommender)...');
-          const recommenderFindings = await scanGCPRecommender(options);
-          findings.push(...recommenderFindings);
+        // Project-level scan (skip if only doing org scan with --all-projects)
+        if (options.project || (!options.organization && !options.folder)) {
+          const projectFindings = await scanGCP(options);
+          findings.push(...projectFindings);
           
-          console.log('  Running advanced checks (Org Policy, VPC SC)...');
-          const advancedFindings = await scanGCPAdvanced(options);
-          findings.push(...advancedFindings);
+          // Enhanced: IAM Recommender + Advanced
+          if (options.enhanced !== false) {
+            console.log('  Running enhanced checks (IAM Recommender)...');
+            const recommenderFindings = await scanGCPRecommender(options);
+            findings.push(...recommenderFindings);
+            
+            console.log('  Running advanced checks (Org Policy, Hierarchy)...');
+            const advancedFindings = await scanGCPAdvanced(options);
+            findings.push(...advancedFindings);
+          }
         }
         break;
         

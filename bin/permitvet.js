@@ -33,6 +33,9 @@ Options:
   --profile <name>       AWS profile name
   --subscription <id>    Azure subscription ID
   --project <id>         GCP project ID
+  --organization <id>    GCP organization ID (org-level scan)
+  --folder <id>          GCP folder ID (folder-level scan)
+  --all-projects         Scan all projects under org/folder
   --kubeconfig <path>    Kubernetes config file path
   --context <name>       Kubernetes context name
   --format <type>        Output format (table, json, sarif, html, compliance)
@@ -46,6 +49,11 @@ Examples:
   permitvet scan aws --profile production
   permitvet scan azure --subscription abc123
   permitvet scan gcp --project my-project
+
+  # GCP Organization-level scan
+  permitvet scan gcp --organization 123456789
+  permitvet scan gcp --organization 123456789 --all-projects
+  permitvet scan gcp --folder 987654321 --all-projects
 
   # Scan all providers
   permitvet scan all
@@ -158,6 +166,12 @@ function parseOptions(args) {
       options.subscription = args[++i];
     } else if (arg === '--project' && args[i + 1]) {
       options.project = args[++i];
+    } else if (arg === '--organization' && args[i + 1]) {
+      options.organization = args[++i];
+    } else if (arg === '--folder' && args[i + 1]) {
+      options.folder = args[++i];
+    } else if (arg === '--all-projects') {
+      options.allProjects = true;
     } else if (arg === '--kubeconfig' && args[i + 1]) {
       options.kubeconfig = args[++i];
     } else if (arg === '--context' && args[i + 1]) {

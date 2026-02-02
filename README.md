@@ -93,6 +93,15 @@ permitvet scan gcp --project my-project
 
 # With IAM Recommender insights
 permitvet scan gcp --project my-project  # Enhanced by default
+
+# Organization-level scan (v0.10.0+)
+permitvet scan gcp --organization 123456789
+
+# Scan all projects in organization
+permitvet scan gcp --organization 123456789 --all-projects
+
+# Folder-level scan
+permitvet scan gcp --folder 987654321 --all-projects
 ```
 
 ### Multi-Cloud

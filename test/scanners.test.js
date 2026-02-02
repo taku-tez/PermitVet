@@ -50,6 +50,11 @@ describe('Scanner Modules', () => {
     const { detectPrivescPaths } = require('../src/scanners/privesc-detector.js');
     assert.strictEqual(typeof detectPrivescPaths, 'function');
   });
+  
+  it('gcp-organization.js exports scanGCPOrganization function', () => {
+    const { scanGCPOrganization } = require('../src/scanners/gcp-organization.js');
+    assert.strictEqual(typeof scanGCPOrganization, 'function');
+  });
 
 });
 
