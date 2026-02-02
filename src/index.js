@@ -9,6 +9,8 @@ const { scanEntraID } = require('./scanners/azure-entra.js');
 const { scanGCP } = require('./scanners/gcp.js');
 const { scanAccessAnalyzer } = require('./scanners/aws-access-analyzer.js');
 const { scanAWSAdvanced } = require('./scanners/aws-advanced.js');
+const { scanAWSSecrets } = require('./scanners/aws-secrets.js');
+const { scanAWSNetwork } = require('./scanners/aws-network.js');
 const { scanGCPRecommender } = require('./scanners/gcp-recommender.js');
 const { scanGCPAdvanced } = require('./scanners/gcp-advanced.js');
 const { scanAzureAdvanced } = require('./scanners/azure-advanced.js');
@@ -18,7 +20,7 @@ const { detectPrivescPaths, buildAttackGraph, AWS_PRIVESC_TECHNIQUES, AZURE_PRIV
 const { mapToCompliance, generateComplianceSummary, generateSARIF, generateHTMLReport } = require('./compliance.js');
 const { Reporter } = require('./reporter.js');
 
-const version = '0.8.0';
+const version = '0.9.0';
 
 /**
  * Scan cloud provider for IAM permission issues
@@ -51,6 +53,14 @@ async function scan(provider, options = {}) {
           console.log('  Running advanced checks (SCPs, Boundaries, IMDSv2)...');
           const advancedFindings = await scanAWSAdvanced(options);
           findings.push(...advancedFindings);
+          
+          console.log('  Running secrets & encryption checks...');
+          const secretsFindings = await scanAWSSecrets(options);
+          findings.push(...secretsFindings);
+          
+          console.log('  Running network security checks...');
+          const networkFindings = await scanAWSNetwork(options);
+          findings.push(...networkFindings);
         }
       } catch (e) {
         console.log(`  ⚠️ AWS scan skipped: ${e.message}`);
@@ -130,7 +140,7 @@ async function scan(provider, options = {}) {
       case 'aws':
         findings = await scanAWS(options);
         
-        // Enhanced: Access Analyzer + Advanced checks
+        // Enhanced: Access Analyzer + Advanced + Secrets + Network
         if (options.enhanced !== false) {
           console.log('  Running enhanced checks (Access Analyzer)...');
           const accessAnalyzerFindings = await scanAccessAnalyzer(options);
@@ -139,6 +149,14 @@ async function scan(provider, options = {}) {
           console.log('  Running advanced checks (SCPs, Boundaries, IMDSv2)...');
           const advancedFindings = await scanAWSAdvanced(options);
           findings.push(...advancedFindings);
+          
+          console.log('  Running secrets & encryption checks...');
+          const secretsFindings = await scanAWSSecrets(options);
+          findings.push(...secretsFindings);
+          
+          console.log('  Running network security checks...');
+          const networkFindings = await scanAWSNetwork(options);
+          findings.push(...networkFindings);
         }
         break;
         
