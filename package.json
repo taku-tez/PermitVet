@@ -1,6 +1,6 @@
 {
   "name": "@permitvet/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Cloud IAM Permission Auditor - Vet your entitlements before they become liabilities",
   "main": "src/index.js",
   "bin": {
@@ -39,6 +39,9 @@
     "@aws-sdk/client-iam": "^3.0.0",
     "@aws-sdk/client-organizations": "^3.0.0",
     "@aws-sdk/client-access-analyzer": "^3.0.0",
+    "@azure/identity": "^4.0.0",
+    "@azure/arm-authorization": "^10.0.0",
+    "@azure/arm-subscriptions": "^5.0.0",
     "googleapis": "^140.0.0",
     "@google-cloud/iam-credentials": "^3.0.0",
     "@google-cloud/resource-manager": "^5.0.0"

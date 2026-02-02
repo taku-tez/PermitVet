@@ -81,10 +81,10 @@ permitvet scan gcp --project <project-id>
 
 ## Roadmap
 
-- [ ] AWS IAM scanning
-- [ ] Azure RBAC scanning
-- [ ] GCP IAM scanning
-- [ ] Privilege escalation path detection
+- [x] AWS IAM scanning
+- [x] Azure RBAC scanning
+- [x] GCP IAM scanning
+- [x] Privilege escalation path detection
 - [ ] Policy recommendations
 - [ ] CI/CD integration
 - [ ] Securify dashboard integration
