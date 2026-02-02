@@ -2,8 +2,9 @@
 
 > Wiz-level Cloud IAM Security Scanner - Because $250K/year for CIEM is insane.
 
+[![CI](https://github.com/taku-tez/PermitVet/actions/workflows/ci.yml/badge.svg)](https://github.com/taku-tez/PermitVet/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://badge.fury.io/js/@permitvet%2Fcli.svg)](https://www.npmjs.com/package/@permitvet/cli)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
 
 ---
 
