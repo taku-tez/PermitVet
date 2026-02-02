@@ -9,8 +9,9 @@ const { scanEntraID } = require('./scanners/azure-entra.js');
 const { scanGCP } = require('./scanners/gcp.js');
 const { scanAccessAnalyzer } = require('./scanners/aws-access-analyzer.js');
 const { scanAWSAdvanced } = require('./scanners/aws-advanced.js');
-const { scanAWSSecrets } = require('./scanners/aws-secrets.js');
-const { scanAWSNetwork } = require('./scanners/aws-network.js');
+// CSPM scanners removed - PermitVet is CIEM-focused
+// const { scanAWSSecrets } = require('./scanners/aws-secrets.js');
+// const { scanAWSNetwork } = require('./scanners/aws-network.js');
 const { scanGCPRecommender } = require('./scanners/gcp-recommender.js');
 const { scanGCPAdvanced } = require('./scanners/gcp-advanced.js');
 const { scanAzureAdvanced } = require('./scanners/azure-advanced.js');
@@ -20,7 +21,7 @@ const { detectPrivescPaths, buildAttackGraph, AWS_PRIVESC_TECHNIQUES, AZURE_PRIV
 const { mapToCompliance, generateComplianceSummary, generateSARIF, generateHTMLReport } = require('./compliance.js');
 const { Reporter } = require('./reporter.js');
 
-const version = '0.9.2';
+const version = '0.9.3';
 
 /**
  * Scan cloud provider for IAM permission issues
@@ -54,13 +55,13 @@ async function scan(provider, options = {}) {
           const advancedFindings = await scanAWSAdvanced(options);
           findings.push(...advancedFindings);
           
-          console.log('  Running secrets & encryption checks...');
-          const secretsFindings = await scanAWSSecrets(options);
-          findings.push(...secretsFindings);
+          // CSPM removed: secrets check
+          // const secretsFindings = await scanAWSSecrets(options);
+          // findings.push(...secretsFindings);
           
-          console.log('  Running network security checks...');
-          const networkFindings = await scanAWSNetwork(options);
-          findings.push(...networkFindings);
+          // CSPM removed: network check
+          // const networkFindings = await scanAWSNetwork(options);
+          // findings.push(...networkFindings);
         }
       } catch (e) {
         console.log(`  ⚠️ AWS scan skipped: ${e.message}`);
@@ -150,13 +151,13 @@ async function scan(provider, options = {}) {
           const advancedFindings = await scanAWSAdvanced(options);
           findings.push(...advancedFindings);
           
-          console.log('  Running secrets & encryption checks...');
-          const secretsFindings = await scanAWSSecrets(options);
-          findings.push(...secretsFindings);
+          // CSPM removed: secrets check
+          // const secretsFindings = await scanAWSSecrets(options);
+          // findings.push(...secretsFindings);
           
-          console.log('  Running network security checks...');
-          const networkFindings = await scanAWSNetwork(options);
-          findings.push(...networkFindings);
+          // CSPM removed: network check
+          // const networkFindings = await scanAWSNetwork(options);
+          // findings.push(...networkFindings);
         }
         break;
         
