@@ -1,7 +1,7 @@
 {
   "name": "@permitvet/cli",
-  "version": "0.3.0",
-  "description": "Cloud IAM Permission Auditor - Vet your entitlements before they become liabilities",
+  "version": "0.4.0",
+  "description": "Wiz-level Cloud IAM Security Scanner - CIEM, privilege escalation detection, compliance reporting",
   "main": "src/index.js",
   "bin": {
     "permitvet": "./bin/permitvet.js"
@@ -20,7 +20,14 @@
     "gcp",
     "permissions",
     "security",
-    "audit"
+    "audit",
+    "privilege-escalation",
+    "compliance",
+    "cis-benchmark",
+    "sarif",
+    "access-analyzer",
+    "least-privilege",
+    "wiz-alternative"
   ],
   "author": "tez",
   "license": "MIT",
