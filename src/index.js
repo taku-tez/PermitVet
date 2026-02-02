@@ -8,12 +8,14 @@ const { scanAzure } = require('./scanners/azure.js');
 const { scanEntraID } = require('./scanners/azure-entra.js');
 const { scanGCP } = require('./scanners/gcp.js');
 const { scanAccessAnalyzer } = require('./scanners/aws-access-analyzer.js');
+const { scanAWSAdvanced } = require('./scanners/aws-advanced.js');
 const { scanGCPRecommender } = require('./scanners/gcp-recommender.js');
+const { scanKubernetesRBAC } = require('./scanners/kubernetes.js');
 const { detectPrivescPaths, buildAttackGraph, AWS_PRIVESC_TECHNIQUES, AZURE_PRIVESC_TECHNIQUES, GCP_PRIVESC_TECHNIQUES } = require('./scanners/privesc-detector.js');
 const { mapToCompliance, generateComplianceSummary, generateSARIF, generateHTMLReport } = require('./compliance.js');
 const { Reporter } = require('./reporter.js');
 
-const version = '0.5.0';
+const version = '0.6.0';
 
 /**
  * Scan cloud provider for IAM permission issues
@@ -37,11 +39,15 @@ async function scan(provider, options = {}) {
         const awsFindings = await scanAWS(options);
         findings.push(...awsFindings);
         
-        // Enhanced: Access Analyzer
+        // Enhanced: Access Analyzer + Advanced
         if (options.enhanced !== false) {
           console.log('  Running enhanced checks (Access Analyzer)...');
           const accessAnalyzerFindings = await scanAccessAnalyzer(options);
           findings.push(...accessAnalyzerFindings);
+          
+          console.log('  Running advanced checks (SCPs, Boundaries, IMDSv2)...');
+          const advancedFindings = await scanAWSAdvanced(options);
+          findings.push(...advancedFindings);
         }
       } catch (e) {
         console.log(`  ⚠️ AWS scan skipped: ${e.message}`);
@@ -83,6 +89,17 @@ async function scan(provider, options = {}) {
         console.log(`  ⚠️ GCP scan skipped: ${e.message}`);
       }
     }
+    
+    // Kubernetes
+    if (options.kubernetes !== false && options.k8s !== false) {
+      console.log('\n━━━ Kubernetes ━━━');
+      try {
+        const k8sFindings = await scanKubernetesRBAC(options);
+        findings.push(...k8sFindings);
+      } catch (e) {
+        console.log(`  ⚠️ Kubernetes scan skipped: ${e.message}`);
+      }
+    }
   } else {
     // Single provider scan
     reporter.start(`Scanning ${provider.toUpperCase()} IAM permissions...`);
@@ -91,11 +108,15 @@ async function scan(provider, options = {}) {
       case 'aws':
         findings = await scanAWS(options);
         
-        // Enhanced: Access Analyzer
+        // Enhanced: Access Analyzer + Advanced checks
         if (options.enhanced !== false) {
           console.log('  Running enhanced checks (Access Analyzer)...');
           const accessAnalyzerFindings = await scanAccessAnalyzer(options);
           findings.push(...accessAnalyzerFindings);
+          
+          console.log('  Running advanced checks (SCPs, Boundaries, IMDSv2)...');
+          const advancedFindings = await scanAWSAdvanced(options);
+          findings.push(...advancedFindings);
         }
         break;
         
@@ -119,6 +140,11 @@ async function scan(provider, options = {}) {
           const recommenderFindings = await scanGCPRecommender(options);
           findings.push(...recommenderFindings);
         }
+        break;
+        
+      case 'kubernetes':
+      case 'k8s':
+        findings = await scanKubernetesRBAC(options);
         break;
         
       default:

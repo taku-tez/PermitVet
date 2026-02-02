@@ -25,12 +25,15 @@ Providers:
   aws                Amazon Web Services
   azure              Microsoft Azure
   gcp                Google Cloud Platform
+  kubernetes (k8s)   Kubernetes clusters
   all                Scan all configured providers
 
 Options:
   --profile <name>       AWS profile name
   --subscription <id>    Azure subscription ID
   --project <id>         GCP project ID
+  --kubeconfig <path>    Kubernetes config file path
+  --context <name>       Kubernetes context name
   --format <type>        Output format (table, json, sarif, html, compliance)
   --output <file>        Output file path
   --quiet                Suppress non-essential output
@@ -154,6 +157,10 @@ function parseOptions(args) {
       options.subscription = args[++i];
     } else if (arg === '--project' && args[i + 1]) {
       options.project = args[++i];
+    } else if (arg === '--kubeconfig' && args[i + 1]) {
+      options.kubeconfig = args[++i];
+    } else if (arg === '--context' && args[i + 1]) {
+      options.context = args[++i];
     } else if (arg === '--permissions' && args[i + 1]) {
       options.permissions = args[++i];
     } else if (arg === '--no-enhanced') {
