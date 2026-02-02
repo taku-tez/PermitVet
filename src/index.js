@@ -3,9 +3,10 @@
  */
 
 const { scanAWS } = require('./scanners/aws.js');
+const { scanGCP } = require('./scanners/gcp.js');
 const { Reporter } = require('./reporter.js');
 
-const version = '0.1.0';
+const version = '0.2.0';
 
 /**
  * Scan cloud provider for IAM permission issues
@@ -28,7 +29,7 @@ async function scan(provider, options = {}) {
       reporter.warn('Azure scanning not yet implemented');
       break;
     case 'gcp':
-      reporter.warn('GCP scanning not yet implemented');
+      findings = await scanGCP(options);
       break;
     default:
       throw new Error(`Unknown provider: ${provider}`);
