@@ -1,6 +1,6 @@
 {
   "name": "@permitvet/cli",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Wiz-level Cloud IAM Security Scanner - CIEM, privilege escalation detection, compliance reporting",
   "main": "src/index.js",
   "bin": {

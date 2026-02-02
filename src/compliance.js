@@ -309,6 +309,124 @@ const FINDING_TO_COMPLIANCE = {
     nist: ['IA-5'],
     iso27001: ['A.5.17'],
   },
+  
+  // GCP Advanced
+  'gcp-orgpolicy-iam.disableServiceAccountKeyCreation': {
+    cis: ['1.4'],
+    nist: ['IA-5'],
+  },
+  'gcp-no-vpc-service-controls': {
+    nist: ['AC-4', 'SC-7'],
+    iso27001: ['A.8.3'],
+  },
+  'gcp-no-workload-identity': {
+    nist: ['IA-5'],
+    iso27001: ['A.5.17'],
+  },
+  
+  // Oracle Cloud (OCI) findings
+  'oci-user-no-mfa': {
+    soc2: ['CC6.3'],
+    'pci-dss': ['8.4'],
+    nist: ['IA-2'],
+    iso27001: ['A.8.5'],
+  },
+  'oci-user-inactive': {
+    nist: ['AC-2'],
+    iso27001: ['A.5.18'],
+  },
+  'oci-too-many-admins': {
+    nist: ['AC-2', 'AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'oci-single-admin': {
+    nist: ['AC-2'],
+  },
+  'oci-policy-critical': {
+    nist: ['AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'oci-old-api-key': {
+    nist: ['IA-5'],
+    iso27001: ['A.5.17'],
+  },
+  'oci-old-auth-token': {
+    nist: ['IA-5'],
+    iso27001: ['A.5.17'],
+  },
+  'oci-no-identity-federation': {
+    nist: ['IA-8'],
+    iso27001: ['A.5.16'],
+  },
+  
+  // Kubernetes findings
+  'k8s-clusterrole-critical': {
+    nist: ['AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'k8s-anonymous-cluster-admin': {
+    soc2: ['CC6.1'],
+    nist: ['AC-2', 'AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'k8s-all-users-privileged': {
+    nist: ['AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'k8s-default-sa-privileged': {
+    nist: ['AC-6'],
+    iso27001: ['A.5.18'],
+  },
+  'k8s-too-many-cluster-admins': {
+    nist: ['AC-2', 'AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'k8s-anonymous-in-critical-ns': {
+    soc2: ['CC6.1'],
+    nist: ['AC-3'],
+    iso27001: ['A.8.3'],
+  },
+  
+  // AWS Advanced findings
+  'aws-ec2-imdsv1-allowed': {
+    cis: ['5.6'],
+    nist: ['SC-8'],
+  },
+  'aws-s3-account-public-access': {
+    cis: ['2.1.4'],
+    soc2: ['CC6.1'],
+    nist: ['AC-3'],
+    iso27001: ['A.8.3'],
+  },
+  'aws-cross-account-no-external-id': {
+    nist: ['AC-3'],
+    iso27001: ['A.8.3'],
+  },
+  'aws-no-scps': {
+    nist: ['AC-3'],
+  },
+  'aws-users-without-boundary': {
+    nist: ['AC-6'],
+    iso27001: ['A.5.18'],
+  },
+  
+  // Privilege escalation findings (all providers)
+  'privesc-aws-CreateNewPolicyVersion': {
+    nist: ['AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'privesc-aws-PassRole_Lambda': {
+    nist: ['AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'privesc-azure-RoleAssignment_Write': {
+    nist: ['AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'privesc-gcp-SetIamPolicy': {
+    nist: ['AC-6'],
+    iso27001: ['A.8.2'],
+  },
 };
 
 /**

@@ -18,7 +18,7 @@ const { detectPrivescPaths, buildAttackGraph, AWS_PRIVESC_TECHNIQUES, AZURE_PRIV
 const { mapToCompliance, generateComplianceSummary, generateSARIF, generateHTMLReport } = require('./compliance.js');
 const { Reporter } = require('./reporter.js');
 
-const version = '0.7.0';
+const version = '0.8.0';
 
 /**
  * Scan cloud provider for IAM permission issues
