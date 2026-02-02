@@ -5,6 +5,7 @@
 
 const { scanAWS } = require('./scanners/aws.js');
 const { scanAzure } = require('./scanners/azure.js');
+const { scanEntraID } = require('./scanners/azure-entra.js');
 const { scanGCP } = require('./scanners/gcp.js');
 const { scanAccessAnalyzer } = require('./scanners/aws-access-analyzer.js');
 const { scanGCPRecommender } = require('./scanners/gcp-recommender.js');
@@ -12,7 +13,7 @@ const { detectPrivescPaths, buildAttackGraph, AWS_PRIVESC_TECHNIQUES, AZURE_PRIV
 const { mapToCompliance, generateComplianceSummary, generateSARIF, generateHTMLReport } = require('./compliance.js');
 const { Reporter } = require('./reporter.js');
 
-const version = '0.4.0';
+const version = '0.5.0';
 
 /**
  * Scan cloud provider for IAM permission issues
@@ -53,6 +54,13 @@ async function scan(provider, options = {}) {
       try {
         const azureFindings = await scanAzure(options);
         findings.push(...azureFindings);
+        
+        // Enhanced: Entra ID + PIM
+        if (options.enhanced !== false) {
+          console.log('  Running enhanced checks (Entra ID + PIM)...');
+          const entraFindings = await scanEntraID(options);
+          findings.push(...entraFindings);
+        }
       } catch (e) {
         console.log(`  ⚠️ Azure scan skipped: ${e.message}`);
       }
@@ -93,6 +101,13 @@ async function scan(provider, options = {}) {
         
       case 'azure':
         findings = await scanAzure(options);
+        
+        // Enhanced: Entra ID + PIM
+        if (options.enhanced !== false) {
+          console.log('  Running enhanced checks (Entra ID + PIM)...');
+          const entraFindings = await scanEntraID(options);
+          findings.push(...entraFindings);
+        }
         break;
         
       case 'gcp':

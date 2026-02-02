@@ -233,6 +233,61 @@ const FINDING_TO_COMPLIANCE = {
     iso27001: ['A.5.18'],
   },
   
+  // Azure Entra ID findings
+  'azure-too-many-global-admins': {
+    cis: ['1.1.1'],
+    nist: ['AC-2', 'AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'azure-single-global-admin': {
+    cis: ['1.1.2'],
+    nist: ['AC-2'],
+  },
+  'azure-guest-privileged-role': {
+    cis: ['1.3'],
+    soc2: ['CC6.1'],
+    nist: ['AC-2', 'AC-6'],
+    iso27001: ['A.5.18'],
+  },
+  'azure-sp-global-admin': {
+    nist: ['AC-6'],
+    iso27001: ['A.8.2'],
+  },
+  'azure-permanent-privileged-assignment': {
+    cis: ['1.1.4'],
+    nist: ['AC-2'],
+    iso27001: ['A.5.18'],
+  },
+  'azure-pim-no-mfa': {
+    cis: ['1.1.3'],
+    soc2: ['CC6.3'],
+    'pci-dss': ['8.4'],
+    nist: ['IA-2'],
+    iso27001: ['A.8.5'],
+  },
+  'azure-no-mfa-policy': {
+    cis: ['1.1.3'],
+    soc2: ['CC6.3'],
+    'pci-dss': ['8.4'],
+    nist: ['IA-2'],
+    iso27001: ['A.8.5'],
+  },
+  'azure-legacy-auth-allowed': {
+    cis: ['1.1.6'],
+    soc2: ['CC6.1'],
+    nist: ['AC-17'],
+    iso27001: ['A.8.5'],
+  },
+  'azure-no-conditional-access': {
+    soc2: ['CC6.1'],
+    nist: ['AC-3'],
+    iso27001: ['A.5.15'],
+  },
+  'azure-app-critical-permission': {
+    nist: ['AC-6'],
+    iso27001: ['A.5.18'],
+  },
+  
   // GCP findings
   'gcp-primitive-role': {
     cis: ['1.3'],
