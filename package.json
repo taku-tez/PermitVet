@@ -47,17 +47,17 @@
     "@aws-sdk/client-organizations": "^3.0.0",
     "@aws-sdk/client-accessanalyzer": "^3.0.0",
     "@azure/identity": "^4.0.0",
-    "@azure/arm-authorization": "^10.0.0",
-    "@azure/arm-subscriptions": "^5.0.0",
+    "@azure/arm-authorization": "^9.0.0",
+    "@azure/arm-subscriptions": "^6.0.0",
     "@microsoft/microsoft-graph-client": "^3.0.0",
     "googleapis": "^140.0.0",
     "@google-cloud/iam-credentials": "^3.0.0",
-    "@google-cloud/resource-manager": "^5.0.0",
+    "@google-cloud/resource-manager": "^6.0.0",
     "@aws-sdk/client-sts": "^3.0.0",
     "@aws-sdk/client-s3": "^3.0.0",
     "@aws-sdk/client-s3-control": "^3.0.0",
     "@aws-sdk/client-ec2": "^3.0.0",
-    "@kubernetes/client-node": "^0.20.0"
+    "@kubernetes/client-node": "^1.0.0"
   },
   "devDependencies": {
     "eslint": "^9.0.0"
