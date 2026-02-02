@@ -1,6 +1,6 @@
 # 🦅 PermitVet
 
-> Wiz-level Cloud IAM Security Scanner - Because $250K/year for CIEM is insane.
+> **CIEM** (Cloud Infrastructure Entitlement Management) - Pure IAM Security Scanner
 
 [![CI](https://github.com/taku-tez/PermitVet/actions/workflows/ci.yml/badge.svg)](https://github.com/taku-tez/PermitVet/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,13 +10,13 @@
 
 ## Why PermitVet?
 
-Enterprise CIEM tools like Wiz cost $250K+ annually. PermitVet gives you **80% of the value for free**:
+Enterprise CIEM tools like Wiz cost $250K+ annually. PermitVet gives you **CIEM capabilities for free**:
 
-- 🔍 **Multi-cloud scanning** — AWS, Azure, GCP in one tool
-- ⚠️ **Privilege escalation detection** — PMapper/Pacu-level analysis
-- 📊 **Compliance reporting** — CIS, SOC2, PCI-DSS, NIST, ISO27001
+- 🔐 **IAM-focused** — Pure entitlement management, no CSPM noise
+- ⚠️ **Privilege escalation detection** — 70+ attack techniques (PMapper/Pacu-level)
+- 🔍 **Multi-cloud** — AWS, Azure, GCP, OCI, Kubernetes RBAC
 - 🔄 **Native integrations** — Access Analyzer, IAM Recommender
-- 📄 **Standard outputs** — SARIF, HTML, JSON
+- 📊 **Compliance reporting** — CIS, SOC2, PCI-DSS, NIST, ISO27001
 
 ---
 
@@ -24,12 +24,12 @@ Enterprise CIEM tools like Wiz cost $250K+ annually. PermitVet gives you **80% o
 
 | Feature | Description |
 |---------|-------------|
-| **CIS Benchmark Checks** | 50+ checks across AWS, Azure, GCP |
-| **Privilege Escalation** | 30+ known attack techniques detected |
-| **Unused Access Detection** | AWS Access Analyzer + GCP IAM Recommender |
-| **Compliance Mapping** | Findings mapped to 5 frameworks |
-| **Attack Graph** | Visualize who can reach what |
-| **Multi-Cloud** | Scan all providers in one command |
+| **Pure CIEM** | 100% focused on IAM/RBAC - no network or storage noise |
+| **Privilege Escalation** | 70+ attack techniques (30 AWS, 8 Azure, 10 GCP, K8s RBAC) |
+| **Unused Access Detection** | AWS Access Analyzer + GCP IAM Recommender integration |
+| **Compliance Mapping** | Findings mapped to 5 IAM-relevant frameworks |
+| **Multi-Cloud + K8s** | AWS, Azure, GCP, OCI, Kubernetes in one tool |
+| **Permission Boundaries** | SCPs, Azure Management Groups, GCP Org Policies |
 
 ---
 

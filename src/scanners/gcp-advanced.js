@@ -1,6 +1,6 @@
 /**
  * GCP Advanced IAM Scanner
- * Organization Policies, VPC Service Controls, Hierarchy Analysis
+ * Organization Policies (IAM), Hierarchy Analysis, Workload Identity
  */
 
 /**
@@ -25,22 +25,17 @@ async function scanGCPAdvanced(options = {}) {
       return findings;
     }
 
-    // 1. Organization Policies
+    // 1. Organization Policies (IAM-related)
     console.log('  Checking Organization Policies...');
     const orgPolicyFindings = await scanOrganizationPolicies(auth, projectId);
     findings.push(...orgPolicyFindings);
 
-    // 2. VPC Service Controls
-    console.log('  Checking VPC Service Controls...');
-    const vpcscFindings = await scanVPCServiceControls(auth, projectId);
-    findings.push(...vpcscFindings);
-
-    // 3. Resource Hierarchy Inheritance
+    // 2. Resource Hierarchy Inheritance
     console.log('  Analyzing IAM hierarchy...');
     const hierarchyFindings = await analyzeIAMHierarchy(auth, projectId);
     findings.push(...hierarchyFindings);
 
-    // 4. Workload Identity Federation
+    // 3. Workload Identity Federation
     console.log('  Checking Workload Identity...');
     const workloadFindings = await checkWorkloadIdentity(auth, projectId);
     findings.push(...workloadFindings);
@@ -78,7 +73,7 @@ async function scanOrganizationPolicies(auth, projectId) {
     
     const policies = response.data.policies || [];
     
-    // Important security policies to check
+    // IAM-related organization policies to check (CIEM focus)
     const securityPolicies = {
       'constraints/iam.disableServiceAccountKeyCreation': {
         expected: true,
@@ -93,43 +88,24 @@ async function scanOrganizationPolicies(auth, projectId) {
         msg: 'Service account key upload should be disabled',
         recommendation: 'Prevent uploading external keys',
       },
-      'constraints/compute.requireOsLogin': {
-        expected: true,
+      'constraints/iam.allowedPolicyMemberDomains': {
+        checkDomains: true,
         severity: 'warning',
-        msg: 'OS Login should be required for compute instances',
-        recommendation: 'Use OS Login instead of SSH keys in metadata',
-        cis: '4.4',
+        msg: 'Domain restriction policy should be set',
+        recommendation: 'Restrict IAM members to specific domains',
       },
-      'constraints/compute.disableSerialPortAccess': {
-        expected: true,
+      'constraints/iam.disableWorkloadIdentityClusterCreation': {
+        expected: false, // We want WI enabled, so this should NOT be set
         severity: 'info',
-        msg: 'Serial port access should be disabled',
-        recommendation: 'Disable serial port for production workloads',
-      },
-      'constraints/compute.requireShieldedVm': {
-        expected: true,
-        severity: 'info',
-        msg: 'Shielded VMs should be required',
-        recommendation: 'Enable Shielded VM for enhanced security',
+        msg: 'Workload Identity cluster creation is disabled',
+        recommendation: 'Enable Workload Identity for GKE clusters',
       },
       'constraints/storage.uniformBucketLevelAccess': {
         expected: true,
         severity: 'warning',
-        msg: 'Uniform bucket-level access should be enabled',
-        recommendation: 'Use uniform access instead of ACLs',
+        msg: 'Uniform bucket-level access should be enabled (IAM over ACLs)',
+        recommendation: 'Use IAM policies instead of ACLs for access control',
         cis: '5.2',
-      },
-      'constraints/sql.restrictPublicIp': {
-        expected: true,
-        severity: 'warning',
-        msg: 'Public IP for Cloud SQL should be restricted',
-        recommendation: 'Use private IP for Cloud SQL instances',
-      },
-      'constraints/iam.allowedPolicyMemberDomains': {
-        checkDomains: true,
-        severity: 'info',
-        msg: 'Domain restriction policy should be set',
-        recommendation: 'Restrict IAM members to specific domains',
       },
     };
     
@@ -165,120 +141,6 @@ async function scanOrganizationPolicies(auth, projectId) {
             resource: `Project/${projectId}`,
             message: `${constraintName} is set but not enforced`,
             recommendation: config.recommendation,
-          });
-        }
-      }
-    }
-    
-  } catch (error) {
-    if (error.code !== 403 && error.code !== 404) throw error;
-  }
-  
-  return findings;
-}
-
-/**
- * Scan VPC Service Controls
- */
-async function scanVPCServiceControls(auth, projectId) {
-  const findings = [];
-  
-  try {
-    const accesscontextmanager = google.accesscontextmanager({ version: 'v1', auth });
-    
-    // List access policies
-    const policiesResponse = await accesscontextmanager.accessPolicies.list({});
-    const policies = policiesResponse.data.accessPolicies || [];
-    
-    if (policies.length === 0) {
-      findings.push({
-        id: 'gcp-no-vpc-service-controls',
-        severity: 'info',
-        resource: `Project/${projectId}`,
-        message: 'No VPC Service Controls configured',
-        recommendation: 'Consider using VPC Service Controls for data exfiltration prevention',
-      });
-      return findings;
-    }
-    
-    for (const policy of policies) {
-      // List service perimeters
-      const perimetersResponse = await accesscontextmanager.accessPolicies.servicePerimeters.list({
-        parent: policy.name,
-      });
-      
-      const perimeters = perimetersResponse.data.servicePerimeters || [];
-      
-      if (perimeters.length === 0) {
-        findings.push({
-          id: 'gcp-no-service-perimeters',
-          severity: 'info',
-          resource: policy.name,
-          message: 'Access Policy exists but has no service perimeters',
-          recommendation: 'Create service perimeters to protect sensitive resources',
-        });
-        continue;
-      }
-      
-      for (const perimeter of perimeters) {
-        const config = perimeter.status || perimeter.spec;
-        
-        // Check for dry-run only perimeters
-        if (perimeter.useExplicitDryRunSpec && !perimeter.status) {
-          findings.push({
-            id: 'gcp-perimeter-dry-run-only',
-            severity: 'info',
-            resource: perimeter.name,
-            message: 'Service perimeter is in dry-run mode only',
-            recommendation: 'Enable enforcement after testing',
-          });
-        }
-        
-        // Check for overly permissive ingress/egress
-        const ingressPolicies = config?.ingressPolicies || [];
-        const egressPolicies = config?.egressPolicies || [];
-        
-        for (const ingress of ingressPolicies) {
-          // Check for any identity allowed
-          if (ingress.ingressFrom?.identities?.includes('*') ||
-              ingress.ingressFrom?.identityType === 'ANY_IDENTITY') {
-            findings.push({
-              id: 'gcp-perimeter-any-ingress',
-              severity: 'warning',
-              resource: perimeter.name,
-              message: 'Service perimeter allows ingress from any identity',
-              recommendation: 'Restrict ingress to specific identities',
-            });
-          }
-          
-          // Check for all services allowed
-          if (ingress.ingressTo?.resources?.includes('*')) {
-            findings.push({
-              id: 'gcp-perimeter-all-resources-ingress',
-              severity: 'info',
-              resource: perimeter.name,
-              message: 'Service perimeter allows ingress to all resources',
-              recommendation: 'Restrict ingress to specific resources',
-            });
-          }
-        }
-        
-        // Check restricted services
-        const restrictedServices = config?.restrictedServices || [];
-        const criticalServices = [
-          'storage.googleapis.com',
-          'bigquery.googleapis.com',
-          'secretmanager.googleapis.com',
-        ];
-        
-        const missingServices = criticalServices.filter(s => !restrictedServices.includes(s));
-        if (missingServices.length > 0 && restrictedServices.length > 0) {
-          findings.push({
-            id: 'gcp-perimeter-missing-services',
-            severity: 'info',
-            resource: perimeter.name,
-            message: `Critical services not in perimeter: ${missingServices.join(', ')}`,
-            recommendation: 'Add data-sensitive services to the perimeter',
           });
         }
       }

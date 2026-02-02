@@ -16,15 +16,10 @@ async function scanAWSAdvanced(options = {}) {
     const { IAMClient } = require('@aws-sdk/client-iam');
     const { OrganizationsClient, ListPoliciesCommand, DescribePolicyCommand, ListRootsCommand, ListOrganizationalUnitsForParentCommand, ListAccountsForParentCommand, ListPoliciesForTargetCommand } = require('@aws-sdk/client-organizations');
     const { STSClient, GetCallerIdentityCommand } = require('@aws-sdk/client-sts');
-    const { EC2Client, DescribeInstancesCommand } = require('@aws-sdk/client-ec2');
-    const { S3Client, GetPublicAccessBlockCommand, ListBucketsCommand } = require('@aws-sdk/client-s3');
     
     const config = options.profile ? { profile: options.profile } : {};
     const iamClient = new IAMClient(config);
     const orgClient = new OrganizationsClient(config);
-    const stsClient = new STSClient(config);
-    const ec2Client = new EC2Client(config);
-    const s3Client = new S3Client(config);
 
     // 1. Organizations SCP Analysis
     console.log('  Analyzing Organizations SCPs...');
@@ -36,23 +31,13 @@ async function scanAWSAdvanced(options = {}) {
     const boundaryFindings = await analyzePermissionBoundaries(iamClient);
     findings.push(...boundaryFindings);
 
-    // 3. EC2 IMDSv2 Check (CIS 5.6)
-    console.log('  Checking EC2 IMDSv2 settings...');
-    const imdsFindings = await checkIMDSv2(ec2Client);
-    findings.push(...imdsFindings);
-
-    // 4. S3 Block Public Access (CIS 2.1.4)
-    console.log('  Checking S3 public access settings...');
-    const s3Findings = await checkS3PublicAccess(s3Client);
-    findings.push(...s3Findings);
-
-    // 5. Cross-Account Role Analysis
+    // 3. Cross-Account Role Analysis
     console.log('  Analyzing cross-account roles...');
     const crossAccountFindings = await analyzeCrossAccountRoles(iamClient);
     findings.push(...crossAccountFindings);
 
-    // 6. Permission Boundary Effectiveness
-    console.log('  Checking permission boundary effectiveness...');
+    // 4. Effective Permissions Analysis
+    console.log('  Analyzing effective permissions...');
     const effectiveFindings = await analyzeEffectivePermissions(iamClient);
     findings.push(...effectiveFindings);
 
@@ -258,154 +243,6 @@ async function analyzePermissionBoundaries(iamClient) {
     
   } catch (error) {
     if (error.name !== 'AccessDeniedException') throw error;
-  }
-  
-  return findings;
-}
-
-/**
- * Check EC2 IMDSv2 settings (CIS 5.6)
- */
-async function checkIMDSv2(ec2Client) {
-  const findings = [];
-  
-  try {
-    const { DescribeInstancesCommand } = require('@aws-sdk/client-ec2');
-    
-    let nextToken;
-    let instancesWithoutIMDSv2 = 0;
-    let totalInstances = 0;
-    
-    do {
-      const response = await ec2Client.send(new DescribeInstancesCommand({
-        NextToken: nextToken,
-        Filters: [{ Name: 'instance-state-name', Values: ['running'] }],
-      }));
-      
-      for (const reservation of response.Reservations || []) {
-        for (const instance of reservation.Instances || []) {
-          totalInstances++;
-          
-          // Check if IMDSv2 is required
-          if (instance.MetadataOptions?.HttpTokens !== 'required') {
-            instancesWithoutIMDSv2++;
-          }
-          
-          // Check for hop limit (should be 1 for non-container workloads)
-          if (instance.MetadataOptions?.HttpPutResponseHopLimit > 1) {
-            const name = instance.Tags?.find(t => t.Key === 'Name')?.Value || instance.InstanceId;
-            findings.push({
-              id: 'aws-ec2-imds-hop-limit',
-              severity: 'info',
-              resource: `EC2/${name}`,
-              message: `IMDS hop limit is ${instance.MetadataOptions.HttpPutResponseHopLimit} (allows container access)`,
-              recommendation: 'Set hop limit to 1 unless containers need IMDS access',
-            });
-          }
-        }
-      }
-      
-      nextToken = response.NextToken;
-    } while (nextToken);
-    
-    if (instancesWithoutIMDSv2 > 0) {
-      findings.push({
-        id: 'aws-ec2-imdsv1-allowed',
-        severity: 'warning',
-        resource: 'EC2',
-        message: `${instancesWithoutIMDSv2}/${totalInstances} running instances allow IMDSv1`,
-        recommendation: 'Require IMDSv2 to prevent SSRF-based credential theft',
-        cis: '5.6',
-      });
-    }
-    
-  } catch (error) {
-    if (error.name !== 'AccessDeniedException') throw error;
-  }
-  
-  return findings;
-}
-
-/**
- * Check S3 Block Public Access settings (CIS 2.1.4)
- */
-async function checkS3PublicAccess(s3Client) {
-  const findings = [];
-  
-  try {
-    const { ListBucketsCommand, GetPublicAccessBlockCommand, GetBucketPolicyStatusCommand } = require('@aws-sdk/client-s3');
-    const { S3ControlClient, GetPublicAccessBlockCommand: GetAccountPublicAccessBlockCommand } = require('@aws-sdk/client-s3-control');
-    const { STSClient, GetCallerIdentityCommand } = require('@aws-sdk/client-sts');
-    
-    // Check account-level block public access
-    const stsClient = new STSClient({});
-    const identity = await stsClient.send(new GetCallerIdentityCommand({}));
-    const accountId = identity.Account;
-    
-    try {
-      const s3ControlClient = new S3ControlClient({});
-      const accountBlock = await s3ControlClient.send(new GetAccountPublicAccessBlockCommand({
-        AccountId: accountId,
-      }));
-      
-      const config = accountBlock.PublicAccessBlockConfiguration;
-      if (!config?.BlockPublicAcls || !config?.BlockPublicPolicy || 
-          !config?.IgnorePublicAcls || !config?.RestrictPublicBuckets) {
-        findings.push({
-          id: 'aws-s3-account-public-access',
-          severity: 'warning',
-          resource: 'S3/Account',
-          message: 'Account-level S3 Block Public Access is not fully enabled',
-          recommendation: 'Enable all four Block Public Access settings at account level',
-          cis: '2.1.4',
-        });
-      }
-    } catch (e) {
-      if (e.name === 'NoSuchPublicAccessBlockConfiguration') {
-        findings.push({
-          id: 'aws-s3-no-account-block',
-          severity: 'warning',
-          resource: 'S3/Account',
-          message: 'No account-level S3 Block Public Access configured',
-          recommendation: 'Enable S3 Block Public Access at account level',
-          cis: '2.1.4',
-        });
-      }
-    }
-    
-    // Check bucket-level settings
-    const bucketsResponse = await s3Client.send(new ListBucketsCommand({}));
-    let publicBuckets = 0;
-    
-    for (const bucket of bucketsResponse.Buckets || []) {
-      try {
-        const blockConfig = await s3Client.send(new GetPublicAccessBlockCommand({
-          Bucket: bucket.Name,
-        }));
-        
-        const config = blockConfig.PublicAccessBlockConfiguration;
-        if (!config?.BlockPublicAcls || !config?.BlockPublicPolicy) {
-          publicBuckets++;
-        }
-      } catch (e) {
-        if (e.name === 'NoSuchPublicAccessBlockConfiguration') {
-          publicBuckets++;
-        }
-      }
-    }
-    
-    if (publicBuckets > 0) {
-      findings.push({
-        id: 'aws-s3-buckets-public-access',
-        severity: 'info',
-        resource: 'S3',
-        message: `${publicBuckets} buckets have incomplete Block Public Access settings`,
-        recommendation: 'Enable Block Public Access on all buckets unless public access is required',
-      });
-    }
-    
-  } catch (error) {
-    if (error.name !== 'AccessDeniedException' && error.code !== 'MODULE_NOT_FOUND') throw error;
   }
   
   return findings;
