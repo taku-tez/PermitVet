@@ -25,6 +25,7 @@ Providers:
   aws                Amazon Web Services
   azure              Microsoft Azure
   gcp                Google Cloud Platform
+  oci (oracle)       Oracle Cloud Infrastructure
   kubernetes (k8s)   Kubernetes clusters
   all                Scan all configured providers
 

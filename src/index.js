@@ -18,7 +18,7 @@ const { detectPrivescPaths, buildAttackGraph, AWS_PRIVESC_TECHNIQUES, AZURE_PRIV
 const { mapToCompliance, generateComplianceSummary, generateSARIF, generateHTMLReport } = require('./compliance.js');
 const { Reporter } = require('./reporter.js');
 
-const version = '0.6.0';
+const version = '0.7.0';
 
 /**
  * Scan cloud provider for IAM permission issues
@@ -64,11 +64,15 @@ async function scan(provider, options = {}) {
         const azureFindings = await scanAzure(options);
         findings.push(...azureFindings);
         
-        // Enhanced: Entra ID + PIM
+        // Enhanced: Entra ID + PIM + Advanced
         if (options.enhanced !== false) {
           console.log('  Running enhanced checks (Entra ID + PIM)...');
           const entraFindings = await scanEntraID(options);
           findings.push(...entraFindings);
+          
+          console.log('  Running advanced checks (Management Groups, Policy)...');
+          const advancedFindings = await scanAzureAdvanced(options);
+          findings.push(...advancedFindings);
         }
       } catch (e) {
         console.log(`  ⚠️ Azure scan skipped: ${e.message}`);
@@ -82,14 +86,29 @@ async function scan(provider, options = {}) {
         const gcpFindings = await scanGCP(options);
         findings.push(...gcpFindings);
         
-        // Enhanced: IAM Recommender
+        // Enhanced: IAM Recommender + Advanced
         if (options.enhanced !== false) {
           console.log('  Running enhanced checks (IAM Recommender)...');
           const recommenderFindings = await scanGCPRecommender(options);
           findings.push(...recommenderFindings);
+          
+          console.log('  Running advanced checks (Org Policy, VPC SC)...');
+          const advancedFindings = await scanGCPAdvanced(options);
+          findings.push(...advancedFindings);
         }
       } catch (e) {
         console.log(`  ⚠️ GCP scan skipped: ${e.message}`);
+      }
+    }
+    
+    // OCI (Oracle Cloud)
+    if (options.oci !== false && options.oracle !== false) {
+      console.log('\n━━━ Oracle Cloud (OCI) ━━━');
+      try {
+        const ociFindings = await scanOCI(options);
+        findings.push(...ociFindings);
+      } catch (e) {
+        console.log(`  ⚠️ OCI scan skipped: ${e.message}`);
       }
     }
     
@@ -126,28 +145,41 @@ async function scan(provider, options = {}) {
       case 'azure':
         findings = await scanAzure(options);
         
-        // Enhanced: Entra ID + PIM
+        // Enhanced: Entra ID + PIM + Advanced
         if (options.enhanced !== false) {
           console.log('  Running enhanced checks (Entra ID + PIM)...');
           const entraFindings = await scanEntraID(options);
           findings.push(...entraFindings);
+          
+          console.log('  Running advanced checks (Management Groups, Policy)...');
+          const advancedFindings = await scanAzureAdvanced(options);
+          findings.push(...advancedFindings);
         }
         break;
         
       case 'gcp':
         findings = await scanGCP(options);
         
-        // Enhanced: IAM Recommender
+        // Enhanced: IAM Recommender + Advanced
         if (options.enhanced !== false) {
           console.log('  Running enhanced checks (IAM Recommender)...');
           const recommenderFindings = await scanGCPRecommender(options);
           findings.push(...recommenderFindings);
+          
+          console.log('  Running advanced checks (Org Policy, VPC SC)...');
+          const advancedFindings = await scanGCPAdvanced(options);
+          findings.push(...advancedFindings);
         }
         break;
         
       case 'kubernetes':
       case 'k8s':
         findings = await scanKubernetesRBAC(options);
+        break;
+        
+      case 'oci':
+      case 'oracle':
+        findings = await scanOCI(options);
         break;
         
       default:

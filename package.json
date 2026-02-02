@@ -1,6 +1,6 @@
 {
   "name": "@permitvet/cli",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Wiz-level Cloud IAM Security Scanner - CIEM, privilege escalation detection, compliance reporting",
   "main": "src/index.js",
   "bin": {
@@ -57,7 +57,11 @@
     "@aws-sdk/client-s3": "^3.0.0",
     "@aws-sdk/client-s3-control": "^3.0.0",
     "@aws-sdk/client-ec2": "^3.0.0",
-    "@kubernetes/client-node": "^1.0.0"
+    "@kubernetes/client-node": "^1.0.0",
+    "@azure/arm-managementgroups": "^2.0.0",
+    "@azure/arm-policy": "^5.0.0",
+    "@azure/arm-locks": "^2.0.0",
+    "oci-sdk": "^2.0.0"
   },
   "devDependencies": {
     "eslint": "^9.0.0"
