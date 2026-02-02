@@ -1,0 +1,46 @@
+{
+  "name": "@permitvet/cli",
+  "version": "0.1.0",
+  "description": "Cloud IAM Permission Auditor - Vet your entitlements before they become liabilities",
+  "main": "src/index.js",
+  "bin": {
+    "permitvet": "./bin/permitvet.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "lint": "eslint src/",
+    "start": "node bin/permitvet.js"
+  },
+  "keywords": [
+    "iam",
+    "ciem",
+    "cloud-security",
+    "aws",
+    "azure",
+    "gcp",
+    "permissions",
+    "security",
+    "audit"
+  ],
+  "author": "tez",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taku-tez/PermitVet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/taku-tez/PermitVet/issues"
+  },
+  "homepage": "https://github.com/taku-tez/PermitVet#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-iam": "^3.0.0",
+    "@aws-sdk/client-organizations": "^3.0.0",
+    "@aws-sdk/client-access-analyzer": "^3.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
+  }
+}
