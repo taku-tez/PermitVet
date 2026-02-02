@@ -100,10 +100,21 @@ async function listAnalyzers(client) {
 
 /**
  * Scan for external access findings
+ * CIEM scope: Only IAM-related resources (roles, users, policies)
+ * S3, Lambda, etc. are CSPM scope - excluded
  */
 async function scanExternalAccess(client, analyzerArn) {
   const findings = [];
   const { ListFindingsCommand } = require('@aws-sdk/client-accessanalyzer');
+  
+  // CIEM scope: Only identity/entitlement resources
+  const CIEM_RESOURCE_TYPES = [
+    'AWS::IAM::Role',
+    'AWS::IAM::User', 
+    'AWS::IAM::Group',
+    'AWS::IAM::Policy',
+    'AWS::KMS::Key', // KMS key policies affect access control
+  ];
   
   try {
     let nextToken;
@@ -118,6 +129,11 @@ async function scanExternalAccess(client, analyzerArn) {
       }));
       
       for (const finding of response.findings || []) {
+        // Skip non-CIEM resources (S3, Lambda, SQS, etc. = CSPM scope)
+        if (!CIEM_RESOURCE_TYPES.includes(finding.resourceType)) {
+          continue;
+        }
+        
         const severity = mapAccessAnalyzerSeverity(finding);
         
         findings.push({
