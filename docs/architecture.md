@@ -13,9 +13,9 @@ PermitVet is a Pure CIEM (Cloud Infrastructure Entitlement Management) CLI tool 
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      Core Layer                             │
-│  src/index.js - Orchestration, multi-cloud coordination     │
-│  src/reporter.js - Output formatting (table/json/sarif)     │
-│  src/compliance.js - CIS/SOC2/PCI-DSS/NIST mapping          │
+│  src/index.ts - Orchestration, multi-cloud coordination     │
+│  src/reporter.ts - Output formatting (table/json/sarif)     │
+│  src/compliance.ts - CIS/SOC2/PCI-DSS/NIST mapping          │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -24,16 +24,19 @@ PermitVet is a Pure CIEM (Cloud Infrastructure Entitlement Management) CLI tool 
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
 │  │    AWS      │ │   Azure     │ │    GCP      │           │
 │  │ ─────────── │ │ ─────────── │ │ ─────────── │           │
-│  │ aws.js      │ │ azure.js    │ │ gcp.js      │           │
-│  │ aws-adv.js  │ │ azure-adv.js│ │ gcp-adv.js  │           │
-│  │ access-     │ │ azure-      │ │ gcp-org.js  │           │
-│  │ analyzer.js │ │ tenant.js   │ │ recommender │           │
+│  │ aws.ts      │ │ azure.ts    │ │ gcp.ts      │           │
+│  │ aws-advanced│ │ azure-advanc│ │ gcp-advanced│           │
+│  │ .ts         │ │ ed.ts       │ │ .ts         │           │
+│  │ aws-access- │ │ azure-      │ │ gcp-organi- │           │
+│  │ analyzer.ts │ │ tenant.ts   │ │ zation.ts   │           │
+│  │             │ │ azure-entra │ │ gcp-recomm- │           │
+│  │             │ │ .ts         │ │ ender.ts    │           │
 │  └─────────────┘ └─────────────┘ └─────────────┘           │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
 │  │ Kubernetes  │ │    OCI      │ │  Privesc    │           │
 │  │ ─────────── │ │ ─────────── │ │ ─────────── │           │
 │  │ kubernetes  │ │ oracle-     │ │ privesc-    │           │
-│  │ .js         │ │ cloud.js    │ │ detector.js │           │
+│  │ .ts         │ │ cloud.ts    │ │ detector.ts │           │
 │  └─────────────┘ └─────────────┘ └─────────────┘           │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -51,24 +54,24 @@ permitvet/
 ├── bin/
 │   └── permitvet.js      # CLI entrypoint
 ├── src/
-│   ├── index.js          # Main orchestrator
-│   ├── reporter.js       # Output formatting
-│   ├── compliance.js     # Compliance framework mapping
+│   ├── index.ts          # Main orchestrator
+│   ├── reporter.ts       # Output formatting
+│   ├── compliance.ts     # Compliance framework mapping
 │   └── scanners/
-│       ├── aws.js                 # AWS IAM scanner
-│       ├── aws-access-analyzer.js # AWS Access Analyzer
-│       ├── aws-advanced.js        # AWS SCPs, boundaries
-│       ├── azure.js               # Azure RBAC scanner
-│       ├── azure-entra.js         # Entra ID (Azure AD)
-│       ├── azure-advanced.js      # Management Groups
-│       ├── azure-tenant.js        # Tenant-wide scanning
-│       ├── gcp.js                 # GCP IAM scanner
-│       ├── gcp-advanced.js        # Org policies, hierarchy
-│       ├── gcp-organization.js    # Organization-level
-│       ├── gcp-recommender.js     # IAM Recommender
-│       ├── kubernetes.js          # K8s RBAC scanner
-│       ├── oracle-cloud.js        # OCI IAM scanner
-│       └── privesc-detector.js    # Privilege escalation
+│       ├── aws.ts                 # AWS IAM scanner
+│       ├── aws-access-analyzer.ts # AWS Access Analyzer
+│       ├── aws-advanced.ts        # AWS SCPs, boundaries
+│       ├── azure.ts               # Azure RBAC scanner
+│       ├── azure-entra.ts         # Entra ID (Azure AD)
+│       ├── azure-advanced.ts      # Management Groups
+│       ├── azure-tenant.ts        # Tenant-wide scanning
+│       ├── gcp.ts                 # GCP IAM scanner
+│       ├── gcp-advanced.ts        # Org policies, hierarchy
+│       ├── gcp-organization.ts    # Organization-level
+│       ├── gcp-recommender.ts     # IAM Recommender
+│       ├── kubernetes.ts          # K8s RBAC scanner
+│       ├── oracle-cloud.ts        # OCI IAM scanner
+│       └── privesc-detector.ts    # Privilege escalation
 ├── docs/                  # Documentation
 ├── test/                  # Test suites
 └── package.json
@@ -81,19 +84,19 @@ Each scanner follows a consistent pattern:
 ```javascript
 async function scanProvider(options = {}) {
   const findings = [];
-  
+
   // 1. Initialize SDK client
   const client = initializeClient(options);
-  
+
   // 2. Fetch IAM resources
   const resources = await fetchResources(client);
-  
+
   // 3. Analyze for issues
   for (const resource of resources) {
     const issues = analyzeResource(resource);
     findings.push(...issues);
   }
-  
+
   return findings;
 }
 ```
@@ -123,7 +126,7 @@ When `permitvet scan all` is invoked:
 
 ## Privilege Escalation Detection
 
-The `privesc-detector.js` module implements 70+ attack techniques:
+The `privesc-detector.ts` module implements 70+ attack techniques:
 
 - **AWS**: 30+ techniques (CreatePolicyVersion, PassRole+Lambda, etc.)
 - **Azure**: 8+ techniques (roleAssignments/write, etc.)
@@ -156,9 +159,9 @@ Findings are automatically mapped to:
 
 ### Adding a New Scanner
 
-1. Create `src/scanners/<provider>.js`
+1. Create `src/scanners/<provider>.ts`
 2. Export `scan<Provider>(options)` function
-3. Register in `src/index.js`
+3. Register in `src/index.ts`
 4. Add CLI options in `bin/permitvet.js`
 
 ### Adding New Checks
