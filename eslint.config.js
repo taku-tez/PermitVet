@@ -1,10 +1,99 @@
 const js = require('@eslint/js');
 const prettier = require('eslint-config-prettier');
+const tseslint = require('@typescript-eslint/eslint-plugin');
+const tsparser = require('@typescript-eslint/parser');
 
 module.exports = [
   js.configs.recommended,
   prettier,
+  // TypeScript files configuration
   {
+    files: ['src/**/*.ts'],
+    languageOptions: {
+      parser: tsparser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+      },
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        require: 'readonly',
+        module: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        Buffer: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        setImmediate: 'readonly',
+        URL: 'readonly',
+        fetch: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': tseslint,
+    },
+    rules: {
+      // Disable base rules that conflict with TypeScript
+      'no-unused-vars': 'off',
+      'no-use-before-define': 'off',
+      'no-useless-constructor': 'off',
+
+      // Use TypeScript-aware versions
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+      '@typescript-eslint/no-use-before-define': ['error', { functions: false }],
+
+      // General rules
+      'no-console': 'off',
+      'prefer-const': 'error',
+      'no-var': 'error',
+      eqeqeq: ['error', 'always'],
+      curly: ['error', 'multi-line'],
+      'no-throw-literal': 'error',
+      'no-return-await': 'error',
+      'no-async-promise-executor': 'error',
+      'no-duplicate-imports': 'error',
+      'no-template-curly-in-string': 'warn',
+      'array-callback-return': 'error',
+      'default-case-last': 'error',
+      'dot-notation': 'error',
+      'no-eval': 'error',
+      'no-implied-eval': 'error',
+      'no-extend-native': 'error',
+      'no-extra-bind': 'error',
+      'no-new-func': 'error',
+      'no-new-wrappers': 'error',
+      'no-return-assign': 'error',
+      'no-self-compare': 'error',
+      'no-sequences': 'error',
+      'no-unmodified-loop-condition': 'error',
+      'no-useless-call': 'error',
+      'no-useless-concat': 'error',
+      'no-useless-return': 'error',
+      radix: 'error',
+      yoda: 'error',
+      'new-cap': ['error', { capIsNew: false }],
+      'no-array-constructor': 'error',
+      'no-lonely-if': 'warn',
+      'no-unneeded-ternary': 'error',
+      'operator-assignment': 'error',
+      'prefer-object-spread': 'error',
+      'no-useless-computed-key': 'error',
+      'no-useless-rename': 'error',
+      'object-shorthand': 'error',
+      'prefer-rest-params': 'error',
+      'prefer-spread': 'error',
+      'symbol-description': 'error',
+    },
+  },
+  // JavaScript files configuration (bin/, test/)
+  {
+    files: ['bin/**/*.js', 'test/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
@@ -73,6 +162,6 @@ module.exports = [
     },
   },
   {
-    ignores: ['node_modules/', 'dist/', 'coverage/'],
+    ignores: ['node_modules/', 'dist/', 'coverage/', 'eslint.config.js'],
   },
 ];

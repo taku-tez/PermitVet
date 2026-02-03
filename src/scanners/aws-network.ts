@@ -92,7 +92,7 @@ export async function scanAWSNetwork(options: ScanOptions = {}): Promise<Finding
   try {
     const { EC2Client } = await import('@aws-sdk/client-ec2');
     const config = options.profile ? { profile: options.profile } : {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const client = new EC2Client(config) as any;
 
     // 1. VPC Configuration

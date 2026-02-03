@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 // GCP types
 interface IAMPolicy {
@@ -59,40 +60,34 @@ export async function scanGCP(options: ScanOptions = {}): Promise<Finding[]> {
       options.project || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
 
     if (!projectId) {
-      console.error('No GCP project specified. Use --project or set GOOGLE_CLOUD_PROJECT');
+      logError('No GCP project specified. Use --project or set GOOGLE_CLOUD_PROJECT');
       return findings;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const iam = google.iam({ version: 'v1', auth }) as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const cloudresourcemanager = google.cloudresourcemanager({ version: 'v1', auth }) as any;
 
     // 1. Scan Project IAM Policy
-    console.log('  Checking project IAM policy...');
+    logProgress('Checking project IAM policy...');
     const policyFindings = await scanProjectIAMPolicy(cloudresourcemanager, projectId);
     findings.push(...policyFindings);
 
     // 2. Scan Service Accounts
-    console.log('  Scanning service accounts...');
+    logProgress('Scanning service accounts...');
     const saFindings = await scanServiceAccounts(iam, projectId);
     findings.push(...saFindings);
 
     // 3. Scan Custom Roles
-    console.log('  Scanning custom roles...');
+    logProgress('Scanning custom roles...');
     const roleFindings = await scanCustomRoles(iam, projectId);
     findings.push(...roleFindings);
   } catch (error) {
-    const err = error as Error & { code?: string | number };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error(
-        'GCP SDK not installed. Run: npm install googleapis @google-cloud/iam-credentials @google-cloud/resource-manager'
-      );
-    } else if (err.code === 401 || err.code === 403) {
-      console.error('GCP authentication failed. Run: gcloud auth application-default login');
-    } else {
+    const result = handleScanError(error, { provider: 'gcp' });
+    if (result.shouldThrow) {
       throw error;
     }
+    logError(result.message);
   }
 
   return findings;
@@ -102,7 +97,6 @@ export async function scanGCP(options: ScanOptions = {}): Promise<Finding[]> {
  * Scan Project IAM Policy for risky bindings
  */
 async function scanProjectIAMPolicy(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   cloudresourcemanager: any,
   projectId: string
 ): Promise<Finding[]> {
@@ -128,37 +122,42 @@ async function scanProjectIAMPolicy(
             continue;
           }
 
-          findings.push({
-            id: 'gcp-primitive-role',
-            severity: 'warning',
-            resource: `Project/${projectId}`,
-            message: `${member} has primitive role: ${role}`,
-            recommendation: 'Use predefined or custom roles instead of Owner/Editor',
-            cis: '1.3',
-          });
+          findings.push(
+            createFinding(
+              'gcp-primitive-role',
+              `Project/${projectId}`,
+              `${member} has primitive role: ${role}`,
+              'warning',
+              'Use predefined or custom roles instead of Owner/Editor',
+              { cis: '1.3' }
+            )
+          );
         }
       }
 
       // Check for allUsers or allAuthenticatedUsers (public access)
       if (members.includes('allUsers')) {
-        findings.push({
-          id: 'gcp-public-access',
-          severity: 'critical',
-          resource: `Project/${projectId}`,
-          message: `Role ${role} granted to allUsers (public)`,
-          recommendation: 'Remove public access unless absolutely required',
-        });
+        findings.push(
+          createFinding(
+            'gcp-public-access',
+            `Project/${projectId}`,
+            `Role ${role} granted to allUsers (public)`,
+            'critical',
+            'Remove public access unless absolutely required'
+          )
+        );
       }
 
       if (members.includes('allAuthenticatedUsers')) {
-        findings.push({
-          id: 'gcp-authenticated-users',
-          severity: 'critical',
-          resource: `Project/${projectId}`,
-          message: `Role ${role} granted to allAuthenticatedUsers`,
-          recommendation:
-            'This grants access to any Google account - restrict to specific principals',
-        });
+        findings.push(
+          createFinding(
+            'gcp-authenticated-users',
+            `Project/${projectId}`,
+            `Role ${role} granted to allAuthenticatedUsers`,
+            'critical',
+            'This grants access to any Google account - restrict to specific principals'
+          )
+        );
       }
 
       // Check for domain-wide delegation capable roles
@@ -241,11 +240,7 @@ async function scanProjectIAMPolicy(
 /**
  * Scan Service Accounts for security issues
  */
-async function scanServiceAccounts(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  iam: any,
-  projectId: string
-): Promise<Finding[]> {
+async function scanServiceAccounts(iam: any, projectId: string): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {
@@ -367,11 +362,7 @@ async function scanServiceAccounts(
 /**
  * Scan Custom Roles for dangerous permissions
  */
-async function scanCustomRoles(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  iam: any,
-  projectId: string
-): Promise<Finding[]> {
+async function scanCustomRoles(iam: any, projectId: string): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {

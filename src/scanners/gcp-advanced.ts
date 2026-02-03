@@ -107,16 +107,12 @@ export async function scanGCPAdvanced(options: ScanOptions = {}): Promise<Findin
 /**
  * Scan Organization Policies
  */
-async function scanOrganizationPolicies(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  auth: any,
-  projectId: string
-): Promise<Finding[]> {
+async function scanOrganizationPolicies(auth: any, projectId: string): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {
     const { google } = await import('googleapis');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const orgpolicy = google.orgpolicy({ version: 'v2', auth }) as any;
 
     // List all organization policies for the project
@@ -209,16 +205,12 @@ async function scanOrganizationPolicies(
 /**
  * Analyze IAM hierarchy inheritance
  */
-async function analyzeIAMHierarchy(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  auth: any,
-  projectId: string
-): Promise<Finding[]> {
+async function analyzeIAMHierarchy(auth: any, projectId: string): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {
     const { google } = await import('googleapis');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const cloudresourcemanager = google.cloudresourcemanager({ version: 'v3', auth }) as any;
 
     // Get project info
@@ -292,16 +284,12 @@ async function analyzeIAMHierarchy(
 /**
  * Check Workload Identity configuration
  */
-async function checkWorkloadIdentity(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  auth: any,
-  projectId: string
-): Promise<Finding[]> {
+async function checkWorkloadIdentity(auth: any, projectId: string): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {
     const { google } = await import('googleapis');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const iam = google.iam({ version: 'v1', auth }) as any;
 
     // List workload identity pools

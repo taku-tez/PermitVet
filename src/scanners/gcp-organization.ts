@@ -53,9 +53,8 @@ export async function scanGCPOrganization(options: ScanOptions = {}): Promise<Fi
       scopes: ['https://www.googleapis.com/auth/cloud-platform'],
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cloudresourcemanager = google.cloudresourcemanager({ version: 'v3', auth }) as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const iam = google.iam({ version: 'v1', auth }) as any;
 
     const organizationId = options.organization;
@@ -150,11 +149,7 @@ export async function scanGCPOrganization(options: ScanOptions = {}): Promise<Fi
 /**
  * Scan Folder IAM Policy
  */
-async function scanFolderIAM(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cloudresourcemanager: any,
-  folderId: string
-): Promise<Finding[]> {
+async function scanFolderIAM(cloudresourcemanager: any, folderId: string): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {
@@ -213,7 +208,6 @@ async function scanFolderIAM(
  * Scan Organization IAM Policy
  */
 async function scanOrganizationIAM(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   cloudresourcemanager: any,
   organizationId: string
 ): Promise<Finding[]> {
@@ -339,11 +333,7 @@ async function scanOrganizationIAM(
 /**
  * Scan Organization-level Custom Roles
  */
-async function scanOrganizationRoles(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  iam: any,
-  organizationId: string
-): Promise<Finding[]> {
+async function scanOrganizationRoles(iam: any, organizationId: string): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {
@@ -425,7 +415,6 @@ async function scanOrganizationRoles(
  * Analyze Folder Hierarchy
  */
 async function analyzeFolderHierarchy(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   cloudresourcemanager: any,
   parent: string
 ): Promise<Finding[]> {
@@ -505,11 +494,7 @@ async function analyzeFolderHierarchy(
 /**
  * Scan All Projects under a parent
  */
-async function scanAllProjects(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cloudresourcemanager: any,
-  parent: string
-): Promise<Finding[]> {
+async function scanAllProjects(cloudresourcemanager: any, parent: string): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {

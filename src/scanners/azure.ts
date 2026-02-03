@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 // Azure SDK types
 interface RoleAssignment {
@@ -55,7 +56,6 @@ export async function scanAzure(options: ScanOptions = {}): Promise<Finding[]> {
 
     // If no subscription specified, list available ones
     if (!subscriptionId) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const subClient = new SubscriptionClient(credential) as any;
       const subscriptions: Array<{ subscriptionId?: string; displayName?: string }> = [];
       for await (const sub of subClient.subscriptions.list()) {
@@ -63,18 +63,18 @@ export async function scanAzure(options: ScanOptions = {}): Promise<Finding[]> {
       }
 
       if (subscriptions.length === 0) {
-        console.error('No Azure subscriptions found. Check your credentials.');
+        logError('No Azure subscriptions found. Check your credentials.');
         return findings;
       }
 
       // Use first subscription if only one, otherwise ask
       if (subscriptions.length === 1) {
         subscriptionId = subscriptions[0].subscriptionId;
-        console.log(`  Using subscription: ${subscriptions[0].displayName}`);
+        logProgress(`Using subscription: ${subscriptions[0].displayName}`);
       } else {
-        console.error('Multiple subscriptions found. Use --subscription to specify one:');
+        logError('Multiple subscriptions found. Use --subscription to specify one:');
         for (const sub of subscriptions) {
-          console.error(`  - ${sub.subscriptionId} (${sub.displayName})`);
+          logError(`  - ${sub.subscriptionId} (${sub.displayName})`);
         }
         return findings;
       }
@@ -83,30 +83,25 @@ export async function scanAzure(options: ScanOptions = {}): Promise<Finding[]> {
     const authClient = new AuthorizationManagementClient(credential, subscriptionId!);
 
     // 1. Scan Role Assignments
-    console.log('  Scanning role assignments...');
+    logProgress('Scanning role assignments...');
     const assignmentFindings = await scanRoleAssignments(authClient, subscriptionId!);
     findings.push(...assignmentFindings);
 
     // 2. Scan Custom Role Definitions
-    console.log('  Scanning custom roles...');
+    logProgress('Scanning custom roles...');
     const roleFindings = await scanCustomRoles(authClient, subscriptionId!);
     findings.push(...roleFindings);
 
     // 3. Scan Classic Administrators (deprecated)
-    console.log('  Checking classic administrators...');
+    logProgress('Checking classic administrators...');
     const classicFindings = await scanClassicAdmins(authClient, subscriptionId!);
     findings.push(...classicFindings);
   } catch (error) {
-    const err = error as Error & { code?: string; name?: string };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error(
-        'Azure SDK not installed. Run: npm install @azure/identity @azure/arm-authorization @azure/arm-subscriptions'
-      );
-    } else if (err.name === 'CredentialUnavailableError' || err.code === 'AADSTS') {
-      console.error('Azure authentication failed. Run: az login');
-    } else {
+    const result = handleScanError(error, { provider: 'azure' });
+    if (result.shouldThrow) {
       throw error;
     }
+    logError(result.message);
   }
 
   return findings;

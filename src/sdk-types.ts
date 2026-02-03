@@ -6,8 +6,6 @@
  * We use 'unknown' for response data and cast to our internal types at point of use.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 // =============================================================================
 // Google Cloud SDK Types
 // =============================================================================

@@ -87,7 +87,7 @@ export async function scanKubernetesRBAC(options: ScanOptions = {}): Promise<Fin
     const k8s = await import('@kubernetes/client-node');
 
     // Load kubeconfig
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const kc = new k8s.KubeConfig() as any;
 
     if (options.kubeconfig) {

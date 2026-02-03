@@ -271,7 +271,7 @@ async function checkDenyAssignments(
 
   try {
     const { AuthorizationManagementClient } = await import('@azure/arm-authorization');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const authClient = new AuthorizationManagementClient(credential, subscriptionId) as any;
 
     // List deny assignments

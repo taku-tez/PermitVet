@@ -78,7 +78,6 @@ export function loadConfig(configPathOrDir: string = process.cwd()): PermitVetCo
 export function loadConfigFile(filepath: string): PermitVetConfig | null {
   try {
     if (filepath.endsWith('.js')) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       return require(filepath) as PermitVetConfig;
     } else if (filepath.endsWith('.json')) {
       return JSON.parse(fs.readFileSync(filepath, 'utf-8')) as PermitVetConfig;

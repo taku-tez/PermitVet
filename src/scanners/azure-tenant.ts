@@ -531,7 +531,6 @@ async function scanAccessibleSubscriptions(
     const { SubscriptionClient } = await import('@azure/arm-subscriptions');
     const { AuthorizationManagementClient } = await import('@azure/arm-authorization');
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const subClient = new SubscriptionClient(credential) as any;
 
     const subscriptions: Subscription[] = [];

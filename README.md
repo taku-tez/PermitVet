@@ -22,14 +22,14 @@ Enterprise CIEM tools like Wiz cost $250K+ annually. PermitVet gives you **CIEM 
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Pure CIEM** | 100% focused on IAM/RBAC - no network or storage noise |
-| **Privilege Escalation** | 70+ attack techniques (30 AWS, 8 Azure, 10 GCP, K8s RBAC) |
-| **Unused Access Detection** | AWS Access Analyzer + GCP IAM Recommender integration |
-| **Compliance Mapping** | Findings mapped to 5 IAM-relevant frameworks |
-| **Multi-Cloud + K8s** | AWS, Azure, GCP, OCI, Kubernetes in one tool |
-| **Permission Boundaries** | SCPs, Azure Management Groups, GCP Org Policies |
+| Feature                     | Description                                               |
+| --------------------------- | --------------------------------------------------------- |
+| **Pure CIEM**               | 100% focused on IAM/RBAC - no network or storage noise    |
+| **Privilege Escalation**    | 70+ attack techniques (30 AWS, 8 Azure, 10 GCP, K8s RBAC) |
+| **Unused Access Detection** | AWS Access Analyzer + GCP IAM Recommender integration     |
+| **Compliance Mapping**      | Findings mapped to 5 IAM-relevant frameworks              |
+| **Multi-Cloud + K8s**       | AWS, Azure, GCP, OCI, Kubernetes in one tool              |
+| **Permission Boundaries**   | SCPs, Azure Management Groups, GCP Org Policies           |
 
 ---
 
@@ -38,6 +38,9 @@ Enterprise CIEM tools like Wiz cost $250K+ annually. PermitVet gives you **CIEM 
 ```bash
 # Install
 npm install -g @permitvet/cli
+
+# Generate example config
+permitvet --init-config
 
 # Scan AWS
 permitvet scan aws
@@ -127,13 +130,13 @@ permitvet scan all --no-azure
 
 ## Output Formats
 
-| Format | Use Case |
-|--------|----------|
-| `table` (default) | Human-readable terminal output |
-| `json` | Programmatic processing |
-| `sarif` | GitHub Advanced Security, VS Code |
-| `html` | Executive reports |
-| `compliance` | Compliance summary dashboard |
+| Format            | Use Case                          |
+| ----------------- | --------------------------------- |
+| `table` (default) | Human-readable terminal output    |
+| `json`            | Programmatic processing           |
+| `sarif`           | GitHub Advanced Security, VS Code |
+| `html`            | Executive reports                 |
+| `compliance`      | Compliance summary dashboard      |
 
 ```bash
 # Generate HTML report
@@ -149,15 +152,16 @@ permitvet scan aws --format sarif --output permitvet.sarif
 
 ### CIS Benchmark Compliance
 
-| Provider | Checks |
-|----------|--------|
-| AWS | Root access keys, MFA, password policy, unused credentials, Access Analyzer |
-| Azure | Subscription owners, custom roles, classic admins, guest users |
-| GCP | Primitive roles, service account keys, custom role permissions |
+| Provider | Checks                                                                      |
+| -------- | --------------------------------------------------------------------------- |
+| AWS      | Root access keys, MFA, password policy, unused credentials, Access Analyzer |
+| Azure    | Subscription owners, custom roles, classic admins, guest users              |
+| GCP      | Primitive roles, service account keys, custom role permissions              |
 
 ### Privilege Escalation Paths
 
 **AWS (25+ techniques):**
+
 - `iam:CreatePolicyVersion` - Create malicious policy version
 - `iam:PassRole` + `lambda:CreateFunction` - Exec code as any role
 - `iam:AttachUserPolicy` - Self-grant admin
@@ -165,12 +169,14 @@ permitvet scan aws --format sarif --output permitvet.sarif
 - `ssm:SendCommand` - Execute on any EC2
 
 **Azure (8+ techniques):**
+
 - `roleAssignments/write` - Self-grant Owner
 - `extensions/write` - VM code execution
 - `runCommand/action` - Execute on VMs
 - Automation Run As abuse
 
 **GCP (10+ techniques):**
+
 - `setIamPolicy` - Grant self Owner
 - `serviceAccountKeys.create` - Create keys for any SA
 - `actAs` + `cloudfunctions.create` - Deploy as privileged SA
@@ -209,6 +215,46 @@ permitvet scan aws --format compliance
 
 ---
 
+## Configuration File
+
+PermitVet supports `.permitvet.yml` for project-level configuration:
+
+```yaml
+# .permitvet.yml
+exclude:
+  - 'IAMUser/service-*' # Exclude service accounts
+  - 'ServiceAccount/*-agent@*' # Exclude agent SAs
+
+thresholds:
+  critical: 0 # Fail if any critical findings
+  warning: 10 # Allow up to 10 warnings
+
+rules:
+  aws-iam-user-inline-policy: off # Disable specific rule
+  aws-access-key-old:
+    severity: info # Downgrade to info
+
+aws:
+  profile: default
+
+gcp:
+  # project: "..."
+  # organization: "..."
+
+output:
+  format: table
+```
+
+```bash
+# Use config from specific path
+permitvet scan aws --config ./custom-config.yml
+
+# Generate example config
+permitvet --init-config
+```
+
+---
+
 ## CI/CD Integration
 
 ### GitHub Actions
@@ -218,7 +264,7 @@ permitvet scan aws --format compliance
   run: |
     npm install -g @permitvet/cli
     permitvet scan aws --format sarif --output permitvet.sarif
-    
+
 - name: Upload SARIF
   uses: github/codeql-action/upload-sarif@v2
   with:
@@ -249,10 +295,7 @@ const results = await scan('aws', { profile: 'production' });
 console.log(`Found ${results.critical} critical issues`);
 
 // Analyze permissions for privesc
-const paths = analyzePrivesc('aws', [
-  'iam:CreateUser',
-  'iam:AttachUserPolicy',
-]);
+const paths = analyzePrivesc('aws', ['iam:CreateUser', 'iam:AttachUserPolicy']);
 console.log(`Detected ${paths.length} escalation paths`);
 
 // Get compliance summary
@@ -264,17 +307,17 @@ console.log(`CIS Score: ${compliance.cis.score}%`);
 
 ## vs. Wiz / Orca / Lacework
 
-| Feature | PermitVet | Wiz | Orca |
-|---------|-----------|-----|------|
-| Price | **Free** | $250K+/yr | $100K+/yr |
-| Multi-cloud | ✅ | ✅ | ✅ |
-| CIS Checks | ✅ | ✅ | ✅ |
-| Privesc Detection | ✅ | ✅ | ✅ |
-| Access Analyzer | ✅ | ✅ | ❌ |
-| IAM Recommender | ✅ | ✅ | ❌ |
-| SARIF Output | ✅ | ❌ | ❌ |
-| Self-hosted | ✅ | ❌ | ❌ |
-| Open Source | ✅ | ❌ | ❌ |
+| Feature           | PermitVet | Wiz       | Orca      |
+| ----------------- | --------- | --------- | --------- |
+| Price             | **Free**  | $250K+/yr | $100K+/yr |
+| Multi-cloud       | ✅        | ✅        | ✅        |
+| CIS Checks        | ✅        | ✅        | ✅        |
+| Privesc Detection | ✅        | ✅        | ✅        |
+| Access Analyzer   | ✅        | ✅        | ❌        |
+| IAM Recommender   | ✅        | ✅        | ❌        |
+| SARIF Output      | ✅        | ❌        | ❌        |
+| Self-hosted       | ✅        | ❌        | ❌        |
+| Open Source       | ✅        | ❌        | ❌        |
 
 ---
 
@@ -288,6 +331,8 @@ console.log(`CIS Score: ${compliance.cis.score}%`);
 - [x] GCP IAM Recommender integration
 - [x] Compliance framework mapping
 - [x] SARIF/HTML reporting
+- [x] **TypeScript migration** (v0.15.0)
+- [x] Configuration file support (v0.12.0)
 - [ ] Azure Entra ID / PIM integration
 - [ ] Policy recommendations engine
 - [ ] Attack graph visualization (D3.js)

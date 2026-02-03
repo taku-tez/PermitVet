@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 interface DangerousPattern {
   pattern: RegExp;
@@ -45,22 +46,22 @@ export async function scanAWS(options: ScanOptions = {}): Promise<Finding[]> {
     const client = new IAMClient({});
 
     // 1. Account Summary (Root account checks)
-    console.log('  Checking account summary...');
+    logProgress('Checking account summary...');
     const summaryFindings = await scanAccountSummary(client);
     findings.push(...summaryFindings);
 
     // 2. Password Policy
-    console.log('  Checking password policy...');
+    logProgress('Checking password policy...');
     const passwordFindings = await scanPasswordPolicy(client);
     findings.push(...passwordFindings);
 
     // 3. Credential Report
-    console.log('  Generating credential report...');
+    logProgress('Generating credential report...');
     const credentialFindings = await scanCredentialReport(client);
     findings.push(...credentialFindings);
 
     // 4. Users
-    console.log('  Scanning IAM users...');
+    logProgress('Scanning IAM users...');
     const usersResponse = await client.send(new ListUsersCommand({}));
     const users = usersResponse.Users || [];
 
@@ -70,7 +71,7 @@ export async function scanAWS(options: ScanOptions = {}): Promise<Finding[]> {
     }
 
     // 5. Roles
-    console.log('  Scanning IAM roles...');
+    logProgress('Scanning IAM roles...');
     const rolesResponse = await client.send(new ListRolesCommand({}));
     const roles = rolesResponse.Roles || [];
 
@@ -80,7 +81,7 @@ export async function scanAWS(options: ScanOptions = {}): Promise<Finding[]> {
     }
 
     // 6. Customer Managed Policies
-    console.log('  Scanning IAM policies...');
+    logProgress('Scanning IAM policies...');
     const policiesResponse = await client.send(new ListPoliciesCommand({ Scope: 'Local' }));
     const policies = policiesResponse.Policies || [];
 
@@ -89,14 +90,11 @@ export async function scanAWS(options: ScanOptions = {}): Promise<Finding[]> {
       findings.push(...policyFindings);
     }
   } catch (error) {
-    const err = error as Error & { code?: string; name?: string };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('AWS SDK not installed. Run: npm install');
-    } else if (err.name === 'CredentialsProviderError') {
-      console.error('AWS credentials not configured. Run: aws configure');
-    } else {
+    const result = handleScanError(error, { provider: 'aws' });
+    if (result.shouldThrow) {
       throw error;
     }
+    logError(result.message);
   }
 
   return findings;
@@ -117,26 +115,30 @@ async function scanAccountSummary(
 
     // Check for root access keys (CIS 1.4)
     if ((summary.AccountAccessKeysPresent || 0) > 0) {
-      findings.push({
-        id: 'aws-root-access-key',
-        severity: 'critical',
-        resource: 'Account/Root',
-        message: 'Root account has active access keys',
-        recommendation: 'Delete root account access keys. Use IAM users instead.',
-        cis: '1.4',
-      });
+      findings.push(
+        createFinding(
+          'aws-root-access-key',
+          'Account/Root',
+          'Root account has active access keys',
+          'critical',
+          'Delete root account access keys. Use IAM users instead.',
+          { cis: '1.4' }
+        )
+      );
     }
 
     // Check for root MFA (CIS 1.5)
     if ((summary.AccountMFAEnabled || 0) === 0) {
-      findings.push({
-        id: 'aws-root-mfa-disabled',
-        severity: 'critical',
-        resource: 'Account/Root',
-        message: 'Root account does not have MFA enabled',
-        recommendation: 'Enable hardware MFA for the root account',
-        cis: '1.5',
-      });
+      findings.push(
+        createFinding(
+          'aws-root-mfa-disabled',
+          'Account/Root',
+          'Root account does not have MFA enabled',
+          'critical',
+          'Enable hardware MFA for the root account',
+          { cis: '1.5' }
+        )
+      );
     }
   } catch (_error) {
     // Permission denied - skip
@@ -162,47 +164,55 @@ async function scanPasswordPolicy(
 
     // Minimum length (CIS 1.8)
     if ((policy.MinimumPasswordLength || 0) < 14) {
-      findings.push({
-        id: 'aws-password-length',
-        severity: 'warning',
-        resource: 'Account/PasswordPolicy',
-        message: `Password policy requires only ${policy.MinimumPasswordLength} characters (should be 14+)`,
-        recommendation: 'Set minimum password length to 14 or more',
-        cis: '1.8',
-      });
+      findings.push(
+        createFinding(
+          'aws-password-length',
+          'Account/PasswordPolicy',
+          `Password policy requires only ${policy.MinimumPasswordLength} characters (should be 14+)`,
+          'warning',
+          'Set minimum password length to 14 or more',
+          { cis: '1.8' }
+        )
+      );
     }
 
     // Password reuse (CIS 1.9)
     if (!policy.PasswordReusePrevention || policy.PasswordReusePrevention < 24) {
-      findings.push({
-        id: 'aws-password-reuse',
-        severity: 'warning',
-        resource: 'Account/PasswordPolicy',
-        message: `Password reuse prevention: ${policy.PasswordReusePrevention || 0} (should be 24)`,
-        recommendation: 'Prevent password reuse for last 24 passwords',
-        cis: '1.9',
-      });
+      findings.push(
+        createFinding(
+          'aws-password-reuse',
+          'Account/PasswordPolicy',
+          `Password reuse prevention: ${policy.PasswordReusePrevention || 0} (should be 24)`,
+          'warning',
+          'Prevent password reuse for last 24 passwords',
+          { cis: '1.9' }
+        )
+      );
     }
 
     // Complexity requirements
     if (!policy.RequireUppercaseCharacters) {
-      findings.push({
-        id: 'aws-password-no-uppercase',
-        severity: 'info',
-        resource: 'Account/PasswordPolicy',
-        message: 'Password policy does not require uppercase letters',
-        recommendation: 'Require at least one uppercase letter',
-      });
+      findings.push(
+        createFinding(
+          'aws-password-no-uppercase',
+          'Account/PasswordPolicy',
+          'Password policy does not require uppercase letters',
+          'info',
+          'Require at least one uppercase letter'
+        )
+      );
     }
 
     if (!policy.RequireLowercaseCharacters) {
-      findings.push({
-        id: 'aws-password-no-lowercase',
-        severity: 'info',
-        resource: 'Account/PasswordPolicy',
-        message: 'Password policy does not require lowercase letters',
-        recommendation: 'Require at least one lowercase letter',
-      });
+      findings.push(
+        createFinding(
+          'aws-password-no-lowercase',
+          'Account/PasswordPolicy',
+          'Password policy does not require lowercase letters',
+          'info',
+          'Require at least one lowercase letter'
+        )
+      );
     }
 
     if (!policy.RequireNumbers) {

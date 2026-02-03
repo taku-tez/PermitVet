@@ -51,9 +51,9 @@ export async function scanAWSAdvanced(options: ScanOptions = {}): Promise<Findin
     const { OrganizationsClient } = await import('@aws-sdk/client-organizations');
 
     const config = options.profile ? { profile: options.profile } : {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const iamClient = new IAMClient(config) as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const orgClient = new OrganizationsClient(config) as any;
 
     // 1. Organizations SCP Analysis
@@ -272,8 +272,9 @@ async function analyzePermissionBoundaries(iamClient: IAMClient): Promise<Findin
         role.Path?.startsWith('/aws-service-role/') ||
         role.Path?.startsWith('/service-role/') ||
         role.Arn?.includes(':role/aws-')
-      )
+      ) {
         continue;
+      }
 
       const roleDetail = (await iamClient.send(
         new GetRoleCommand({ RoleName: role.RoleName })

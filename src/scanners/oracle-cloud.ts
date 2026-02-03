@@ -87,7 +87,7 @@ export async function scanOCI(options: ScanOptions = {}): Promise<Finding[]> {
     const common = await import('oci-common');
 
     // Initialize OCI provider
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     let provider: any;
     if (options.configPath) {
       provider = new common.ConfigFileAuthenticationDetailsProvider(
@@ -98,7 +98,6 @@ export async function scanOCI(options: ScanOptions = {}): Promise<Finding[]> {
       provider = new common.ConfigFileAuthenticationDetailsProvider();
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const identityClient = new oci.identity.IdentityClient({
       authenticationDetailsProvider: provider,
     }) as any;

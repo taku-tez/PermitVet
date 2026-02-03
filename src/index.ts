@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import type { Finding, ScanOptions, ScanSummary, PrivescTechnique } from './types';
 
 // Import scanners (still JS for now)
-/* eslint-disable @typescript-eslint/no-require-imports */
+
 const { scanAWS } = require('./scanners/aws.js');
 const { scanAzure } = require('./scanners/azure.js');
 const { scanEntraID } = require('./scanners/azure-entra.js');
@@ -29,7 +29,6 @@ const {
   GCP_PRIVESC_TECHNIQUES,
 } = require('./scanners/privesc-detector.js');
 const { analyzeRBAC, generateRBACReport } = require('./scanners/rbac-analyzer.js');
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 import {
   mapToCompliance,
@@ -388,3 +387,15 @@ export {
   AZURE_PRIVESC_TECHNIQUES,
   GCP_PRIVESC_TECHNIQUES,
 };
+
+// Utility exports
+export {
+  createFinding,
+  handleScanError,
+  logProgress,
+  logError,
+  formatResource,
+  matchesDangerousPattern,
+  SeverityThresholds,
+} from './utils';
+export type { ScanErrorType, ScanErrorContext, ScanErrorResult } from './utils';

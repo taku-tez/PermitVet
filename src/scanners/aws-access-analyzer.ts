@@ -52,7 +52,7 @@ export async function scanAccessAnalyzer(options: ScanOptions = {}): Promise<Fin
     const { AccessAnalyzerClient } = await import('@aws-sdk/client-accessanalyzer');
 
     const config = options.profile ? { profile: options.profile } : {};
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const client = new AccessAnalyzerClient(config) as any;
 
     // 1. Check for existing analyzers
@@ -331,7 +331,7 @@ export async function generatePolicyRecommendation(
     await import('@aws-sdk/client-accessanalyzer');
 
   // Start policy generation based on CloudTrail activity
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const response = (await client.send(
     new StartPolicyGenerationCommand({
       policyGenerationDetails: {
