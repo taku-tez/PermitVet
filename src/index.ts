@@ -60,6 +60,9 @@ export async function scan(
 ): Promise<ScanSummary> {
   const reporter = new Reporter({ quiet: options.quiet, version });
 
+  // Set context for detailed JSON reporting
+  reporter.setContext(provider as import('./types').CloudProvider, options);
+
   let findings: Finding[] = [];
 
   // Multi-cloud scanning
