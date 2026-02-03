@@ -7,7 +7,12 @@
 
 // Use compiled TypeScript from dist/
 const { scan, analyzePrivesc, analyzeRBACDeep, version } = require('../dist/index.js');
-const { loadConfig, mergeOptions, generateExampleConfig } = require('../dist/config.js');
+const {
+  loadConfig,
+  mergeOptions,
+  generateExampleConfig,
+  validateConfig,
+} = require('../dist/config.js');
 const fs = require('fs');
 
 const args = process.argv.slice(2);
@@ -120,14 +125,23 @@ async function main() {
 
     let options = parseOptions(args.slice(2));
 
-    // Load config file
-    const fileConfig = loadConfig(
-      options.configPath ? require('path').dirname(options.configPath) : process.cwd()
-    );
+    // Load config file (supports both file path and directory)
+    const fileConfig = loadConfig(options.configPath || process.cwd());
     if (fileConfig) {
       if (options.verbose) {
         console.log('📄 Loaded configuration from file');
       }
+
+      // Validate configuration
+      const validation = validateConfig(fileConfig);
+      if (!validation.valid) {
+        console.error('❌ Configuration validation failed:');
+        for (const error of validation.errors) {
+          console.error(`   • ${error}`);
+        }
+        process.exit(1);
+      }
+
       options = mergeOptions(options, fileConfig);
     }
 

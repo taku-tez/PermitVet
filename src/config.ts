@@ -50,33 +50,48 @@ export interface ThresholdCheckResult {
 }
 
 /**
- * Load configuration from file
+ * Load configuration from file or directory
+ * @param configPathOrDir - Path to config file or directory to search
  */
-export function loadConfig(dir: string = process.cwd()): PermitVetConfig | null {
+export function loadConfig(configPathOrDir: string = process.cwd()): PermitVetConfig | null {
+  // Check if the path is a file (direct config file specified)
+  if (fs.existsSync(configPathOrDir) && fs.statSync(configPathOrDir).isFile()) {
+    return loadConfigFile(configPathOrDir);
+  }
+
+  // Otherwise, search for config files in the directory
+  const dir = configPathOrDir;
   for (const filename of CONFIG_FILES) {
     const filepath = path.join(dir, filename);
 
     if (fs.existsSync(filepath)) {
-      try {
-        if (filename.endsWith('.js')) {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          return require(filepath) as PermitVetConfig;
-        } else if (filename.endsWith('.json')) {
-          return JSON.parse(fs.readFileSync(filepath, 'utf-8')) as PermitVetConfig;
-        } else {
-          // YAML
-          const content = fs.readFileSync(filepath, 'utf-8');
-          return yaml.parse(content) as PermitVetConfig;
-        }
-      } catch (error) {
-        const err = error as Error;
-        console.error(`Error loading config from ${filepath}: ${err.message}`);
-        return null;
-      }
+      return loadConfigFile(filepath);
     }
   }
 
   return null;
+}
+
+/**
+ * Load configuration from a specific file path
+ */
+export function loadConfigFile(filepath: string): PermitVetConfig | null {
+  try {
+    if (filepath.endsWith('.js')) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require(filepath) as PermitVetConfig;
+    } else if (filepath.endsWith('.json')) {
+      return JSON.parse(fs.readFileSync(filepath, 'utf-8')) as PermitVetConfig;
+    } else {
+      // YAML (default for .yml, .yaml, or unknown extensions)
+      const content = fs.readFileSync(filepath, 'utf-8');
+      return yaml.parse(content) as PermitVetConfig;
+    }
+  } catch (error) {
+    const err = error as Error;
+    console.error(`Error loading config from ${filepath}: ${err.message}`);
+    return null;
+  }
 }
 
 /**

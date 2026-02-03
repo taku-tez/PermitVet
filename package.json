@@ -1,13 +1,13 @@
 {
   "name": "@permitvet/cli",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "Pure CIEM (Cloud Infrastructure Entitlement Management) - IAM security scanner for AWS, Azure, GCP, OCI, Kubernetes",
   "main": "dist/index.js",
   "bin": {
     "permitvet": "./bin/permitvet.js"
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "npm run build && node --test test/*.test.js",
     "test:aws": "node bin/permitvet.js scan aws",
     "test:aws:check": "node bin/permitvet.js scan aws --format json --output /tmp/permitvet-aws.json && node -e \"const r=require('/tmp/permitvet-aws.json'); console.log('Critical:', r.summary?.critical || 0); process.exit(r.summary?.critical > 0 ? 1 : 0)\"",
     "lint": "eslint src/ bin/ test/",
