@@ -1,6 +1,6 @@
 {
   "name": "@permitvet/cli",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Pure CIEM (Cloud Infrastructure Entitlement Management) - IAM security scanner for AWS, Azure, GCP, OCI, Kubernetes",
   "main": "src/index.js",
   "bin": {
@@ -10,8 +10,13 @@
     "test": "node --test test/*.test.js",
     "test:aws": "node bin/permitvet.js scan aws",
     "test:aws:check": "node bin/permitvet.js scan aws --format json --output /tmp/permitvet-aws.json && node -e \"const r=require('/tmp/permitvet-aws.json'); console.log('Critical:', r.summary?.critical || 0); process.exit(r.summary?.critical > 0 ? 1 : 0)\"",
-    "lint": "eslint src/",
-    "start": "node bin/permitvet.js"
+    "lint": "eslint src/ bin/ test/",
+    "start": "node bin/permitvet.js",
+    "prepare": "husky",
+    "format": "prettier --write \"src/**/*.js\" \"bin/**/*.js\" \"test/**/*.js\"",
+    "lint:fix": "eslint --fix src/ bin/ test/",
+    "build": "tsc",
+    "type-check": "tsc --noEmit"
   },
   "keywords": [
     "iam",
@@ -61,6 +66,25 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "eslint": "^9.0.0"
-  }
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^25.2.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.8.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "types": "src/index.d.ts"
 }

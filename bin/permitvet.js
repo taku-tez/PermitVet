@@ -5,7 +5,7 @@
  * Cloud IAM Permission Auditor - Wiz-level CIEM
  */
 
-const { scan, analyzePrivesc, version } = require('../src/index.js');
+const { scan, analyzePrivesc, analyzeRBACDeep, version } = require('../src/index.js');
 const { loadConfig, mergeOptions, generateExampleConfig } = require('../src/config.js');
 const fs = require('fs');
 
@@ -21,6 +21,7 @@ Usage: permitvet <command> [options]
 Commands:
   scan <provider>    Scan cloud IAM permissions
   privesc <provider> Analyze for privilege escalation paths
+  rbac <provider>    Deep RBAC analysis (utilization, unused perms, JIT)
   version            Show version
 
 Providers:
@@ -97,12 +98,12 @@ async function main() {
   if (initConfigIndex !== -1) {
     const configContent = generateExampleConfig();
     const configPath = '.permitvet.yml';
-    
+
     if (fs.existsSync(configPath)) {
       console.error(`Error: ${configPath} already exists`);
       process.exit(1);
     }
-    
+
     fs.writeFileSync(configPath, configContent);
     console.log(`✅ Created ${configPath}`);
     console.log('Edit this file to customize PermitVet behavior.');
@@ -117,16 +118,18 @@ async function main() {
     }
 
     let options = parseOptions(args.slice(2));
-    
+
     // Load config file
-    const fileConfig = loadConfig(options.configPath ? require('path').dirname(options.configPath) : process.cwd());
+    const fileConfig = loadConfig(
+      options.configPath ? require('path').dirname(options.configPath) : process.cwd()
+    );
     if (fileConfig) {
       if (options.verbose) {
         console.log('📄 Loaded configuration from file');
       }
       options = mergeOptions(options, fileConfig);
     }
-    
+
     try {
       if (!options.quiet) {
         console.log(`\n🦅 PermitVet v${version}\n`);
@@ -149,7 +152,7 @@ async function main() {
 
     const options = parseOptions(args.slice(2));
     const permissions = options.permissions?.split(',') || [];
-    
+
     if (permissions.length === 0) {
       console.error('Error: --permissions required (comma-separated list)');
       process.exit(1);
@@ -159,14 +162,14 @@ async function main() {
       console.log(`\n🦅 PermitVet Privilege Escalation Analysis\n`);
       console.log(`Provider: ${provider.toUpperCase()}`);
       console.log(`Permissions: ${permissions.join(', ')}\n`);
-      
+
       const paths = analyzePrivesc(provider, permissions, options);
-      
+
       if (paths.length === 0) {
         console.log('✅ No privilege escalation paths detected');
       } else {
         console.log(`⚠️ ${paths.length} privilege escalation path(s) detected:\n`);
-        
+
         for (const path of paths) {
           const severityEmoji = path.severity === 'critical' ? '🔴' : '🟡';
           console.log(`${severityEmoji} ${path.technique}`);
@@ -177,10 +180,63 @@ async function main() {
           console.log('');
         }
       }
-      
+
       process.exit(paths.some(p => p.severity === 'critical') ? 1 : 0);
     } catch (error) {
       console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+  }
+
+  if (command === 'rbac') {
+    const provider = args[1];
+    if (!provider) {
+      console.error('Error: Provider required (aws, azure, gcp)');
+      process.exit(1);
+    }
+
+    const options = parseOptions(args.slice(2));
+
+    try {
+      console.log(`\n🦅 PermitVet RBAC Deep Analysis\n`);
+      console.log(`Provider: ${provider.toUpperCase()}\n`);
+
+      const results = await analyzeRBACDeep(provider, options);
+
+      // Print summary
+      console.log('📊 Summary');
+      console.log(`  Total Roles: ${results.summary.totalRoles}`);
+      console.log(`  Underutilized: ${results.summary.underutilizedRoles}`);
+      console.log(`  Unused Permissions: ${results.summary.unusedPermissionCount}`);
+      console.log(`  JIT Candidates: ${results.summary.jitCandidates}`);
+      console.log('');
+
+      // Print unused permissions
+      if (results.unusedPermissions.length > 0) {
+        console.log('🗑️ Unused/Overly Broad Permissions:');
+        for (const item of results.unusedPermissions.slice(0, 10)) {
+          console.log(`  • ${item.roleName || item.email || item.targetMember || 'Unknown'}`);
+          console.log(`    → ${item.recommendation}: ${item.message || ''}`);
+          if (item.command) console.log(`    $ ${item.command}`);
+        }
+        console.log('');
+      }
+
+      // Print JIT recommendations
+      if (results.temporaryAccessRecommendations.length > 0) {
+        console.log('⏱️ Just-In-Time Access Recommendations:');
+        for (const rec of results.temporaryAccessRecommendations.slice(0, 5)) {
+          console.log(`  • ${rec.roleName || rec.role || rec.member || 'Privileged Role'}`);
+          console.log(`    ${rec.message}`);
+        }
+        console.log('');
+      }
+
+      // Exit code based on findings
+      process.exit(results.summary.underutilizedRoles > 0 ? 1 : 0);
+    } catch (error) {
+      console.error(`Error: ${error.message}`);
+      if (options.debug) console.error(error.stack);
       process.exit(1);
     }
   }
@@ -194,7 +250,7 @@ function parseOptions(args) {
   const options = {};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    
+
     if (arg === '--profile' && args[i + 1]) {
       options.profile = args[++i];
     } else if (arg === '--format' && args[i + 1]) {

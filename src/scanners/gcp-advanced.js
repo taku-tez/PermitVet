@@ -13,13 +13,14 @@ async function scanGCPAdvanced(options = {}) {
 
   try {
     const { google } = require('googleapis');
-    
+
     const auth = new google.auth.GoogleAuth({
       scopes: ['https://www.googleapis.com/auth/cloud-platform'],
     });
-    
-    const projectId = options.project || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
-    
+
+    const projectId =
+      options.project || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
+
     if (!projectId) {
       console.error('No GCP project specified.');
       return findings;
@@ -39,7 +40,6 @@ async function scanGCPAdvanced(options = {}) {
     console.log('  Checking Workload Identity...');
     const workloadFindings = await checkWorkloadIdentity(auth, projectId);
     findings.push(...workloadFindings);
-
   } catch (error) {
     if (error.code === 403) {
       findings.push({
@@ -62,17 +62,18 @@ async function scanGCPAdvanced(options = {}) {
  */
 async function scanOrganizationPolicies(auth, projectId) {
   const findings = [];
-  
+
   try {
+    const { google } = require('googleapis');
     const orgpolicy = google.orgpolicy({ version: 'v2', auth });
-    
+
     // List all organization policies for the project
     const response = await orgpolicy.projects.policies.list({
       parent: `projects/${projectId}`,
     });
-    
+
     const policies = response.data.policies || [];
-    
+
     // IAM-related organization policies to check (CIEM focus)
     const securityPolicies = {
       'constraints/iam.disableServiceAccountKeyCreation': {
@@ -108,13 +109,13 @@ async function scanOrganizationPolicies(auth, projectId) {
         cis: '5.2',
       },
     };
-    
+
     // Check which policies are set
     const setPolicies = new Set(policies.map(p => p.name?.split('/').pop()));
-    
+
     for (const [constraint, config] of Object.entries(securityPolicies)) {
       const policyName = constraint.replace('constraints/', '');
-      
+
       if (!setPolicies.has(policyName)) {
         findings.push({
           id: `gcp-orgpolicy-${policyName.replace(/\./g, '-')}`,
@@ -126,11 +127,11 @@ async function scanOrganizationPolicies(auth, projectId) {
         });
       }
     }
-    
+
     // Check specific policy configurations
     for (const policy of policies) {
       const constraintName = policy.name?.split('/').pop();
-      
+
       // Check if boolean constraints are enforced
       if (policy.spec?.rules?.[0]?.enforce === false) {
         const config = securityPolicies[`constraints/${constraintName}`];
@@ -145,11 +146,10 @@ async function scanOrganizationPolicies(auth, projectId) {
         }
       }
     }
-    
   } catch (error) {
     if (error.code !== 403 && error.code !== 404) throw error;
   }
-  
+
   return findings;
 }
 
@@ -158,18 +158,19 @@ async function scanOrganizationPolicies(auth, projectId) {
  */
 async function analyzeIAMHierarchy(auth, projectId) {
   const findings = [];
-  
+
   try {
+    const { google } = require('googleapis');
     const cloudresourcemanager = google.cloudresourcemanager({ version: 'v3', auth });
-    
+
     // Get project info
     const projectResponse = await cloudresourcemanager.projects.get({
       name: `projects/${projectId}`,
     });
-    
+
     const project = projectResponse.data;
     const parent = project.parent;
-    
+
     if (!parent) {
       findings.push({
         id: 'gcp-project-no-org',
@@ -180,7 +181,7 @@ async function analyzeIAMHierarchy(auth, projectId) {
       });
       return findings;
     }
-    
+
     // Get parent (folder or organization) IAM policy
     let parentPolicy;
     if (parent.startsWith('folders/')) {
@@ -196,16 +197,16 @@ async function analyzeIAMHierarchy(auth, projectId) {
       });
       parentPolicy = orgResponse.data;
     }
-    
+
     if (parentPolicy) {
       // Check for inherited privileged roles
       for (const binding of parentPolicy.bindings || []) {
         const role = binding.role;
         const members = binding.members || [];
-        
+
         // Dangerous inherited roles
         const inheritedDangerousRoles = ['roles/owner', 'roles/editor', 'roles/iam.securityAdmin'];
-        
+
         if (inheritedDangerousRoles.includes(role)) {
           findings.push({
             id: 'gcp-inherited-privileged-role',
@@ -222,11 +223,10 @@ async function analyzeIAMHierarchy(auth, projectId) {
         }
       }
     }
-    
   } catch (error) {
     if (error.code !== 403 && error.code !== 404) throw error;
   }
-  
+
   return findings;
 }
 
@@ -235,17 +235,18 @@ async function analyzeIAMHierarchy(auth, projectId) {
  */
 async function checkWorkloadIdentity(auth, projectId) {
   const findings = [];
-  
+
   try {
+    const { google } = require('googleapis');
     const iam = google.iam({ version: 'v1', auth });
-    
+
     // List workload identity pools
     const poolsResponse = await iam.projects.locations.workloadIdentityPools.list({
       parent: `projects/${projectId}/locations/global`,
     });
-    
+
     const pools = poolsResponse.data.workloadIdentityPools || [];
-    
+
     // If no pools but project has GKE or external workloads, suggest WI
     if (pools.length === 0) {
       // This is just informational
@@ -258,7 +259,7 @@ async function checkWorkloadIdentity(auth, projectId) {
       });
       return findings;
     }
-    
+
     for (const pool of pools) {
       // Check if pool is disabled
       if (pool.disabled) {
@@ -271,14 +272,14 @@ async function checkWorkloadIdentity(auth, projectId) {
         });
         continue;
       }
-      
+
       // List providers in the pool
       const providersResponse = await iam.projects.locations.workloadIdentityPools.providers.list({
         parent: pool.name,
       });
-      
+
       const providers = providersResponse.data.workloadIdentityPoolProviders || [];
-      
+
       for (const provider of providers) {
         // Check for overly permissive attribute conditions
         if (!provider.attributeCondition) {
@@ -287,10 +288,11 @@ async function checkWorkloadIdentity(auth, projectId) {
             severity: 'warning',
             resource: provider.name,
             message: 'Workload Identity provider has no attribute condition',
-            recommendation: 'Add attribute conditions to restrict which identities can authenticate',
+            recommendation:
+              'Add attribute conditions to restrict which identities can authenticate',
           });
         }
-        
+
         // Check AWS provider configuration
         if (provider.aws) {
           if (!provider.attributeCondition?.includes('aws.arn')) {
@@ -303,7 +305,7 @@ async function checkWorkloadIdentity(auth, projectId) {
             });
           }
         }
-        
+
         // Check OIDC provider configuration
         if (provider.oidc) {
           // Check allowed audiences
@@ -319,11 +321,10 @@ async function checkWorkloadIdentity(auth, projectId) {
         }
       }
     }
-    
   } catch (error) {
     if (error.code !== 403 && error.code !== 404) throw error;
   }
-  
+
   return findings;
 }
 

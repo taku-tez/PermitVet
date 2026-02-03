@@ -14,10 +14,10 @@ async function scanKubernetesRBAC(options = {}) {
 
   try {
     const k8s = require('@kubernetes/client-node');
-    
+
     // Load kubeconfig
     const kc = new k8s.KubeConfig();
-    
+
     if (options.kubeconfig) {
       kc.loadFromFile(options.kubeconfig);
     } else if (options.context) {
@@ -26,10 +26,10 @@ async function scanKubernetesRBAC(options = {}) {
     } else {
       kc.loadFromDefault();
     }
-    
+
     const rbacApi = kc.makeApiClient(k8s.RbacAuthorizationV1Api);
     const coreApi = kc.makeApiClient(k8s.CoreV1Api);
-    
+
     const context = kc.getCurrentContext();
     console.log(`  Scanning Kubernetes cluster: ${context}...`);
 
@@ -57,7 +57,6 @@ async function scanKubernetesRBAC(options = {}) {
     console.log('  Checking default configurations...');
     const defaultFindings = await checkDefaultConfigs(rbacApi, coreApi);
     findings.push(...defaultFindings);
-
   } catch (error) {
     if (error.code === 'MODULE_NOT_FOUND') {
       console.error('Kubernetes client not installed. Run: npm install @kubernetes/client-node');
@@ -82,40 +81,87 @@ async function scanKubernetesRBAC(options = {}) {
  */
 async function scanClusterRoles(rbacApi) {
   const findings = [];
-  
+
   // Dangerous verbs and resources
   const dangerousRules = [
-    { verbs: ['*'], resources: ['*'], severity: 'critical', msg: 'Cluster admin - all permissions' },
+    {
+      verbs: ['*'],
+      resources: ['*'],
+      severity: 'critical',
+      msg: 'Cluster admin - all permissions',
+    },
     { verbs: ['*'], resources: ['secrets'], severity: 'critical', msg: 'Full access to secrets' },
-    { verbs: ['create', 'update', 'patch'], resources: ['clusterroles', 'clusterrolebindings'], severity: 'critical', msg: 'Can escalate privileges' },
-    { verbs: ['create', 'update', 'patch'], resources: ['roles', 'rolebindings'], severity: 'warning', msg: 'Can create/modify roles' },
-    { verbs: ['get', 'list'], resources: ['secrets'], severity: 'warning', msg: 'Can read all secrets' },
+    {
+      verbs: ['create', 'update', 'patch'],
+      resources: ['clusterroles', 'clusterrolebindings'],
+      severity: 'critical',
+      msg: 'Can escalate privileges',
+    },
+    {
+      verbs: ['create', 'update', 'patch'],
+      resources: ['roles', 'rolebindings'],
+      severity: 'warning',
+      msg: 'Can create/modify roles',
+    },
+    {
+      verbs: ['get', 'list'],
+      resources: ['secrets'],
+      severity: 'warning',
+      msg: 'Can read all secrets',
+    },
     { verbs: ['create'], resources: ['pods'], severity: 'warning', msg: 'Can create pods' },
-    { verbs: ['create', 'update', 'patch'], resources: ['pods/exec'], severity: 'critical', msg: 'Can exec into pods' },
-    { verbs: ['create'], resources: ['serviceaccounts/token'], severity: 'critical', msg: 'Can create SA tokens' },
-    { verbs: ['impersonate'], resources: ['users', 'groups', 'serviceaccounts'], severity: 'critical', msg: 'Can impersonate identities' },
-    { verbs: ['escalate'], resources: ['clusterroles', 'roles'], severity: 'critical', msg: 'Can escalate role permissions' },
-    { verbs: ['bind'], resources: ['clusterroles', 'roles'], severity: 'critical', msg: 'Can bind roles to users' },
+    {
+      verbs: ['create', 'update', 'patch'],
+      resources: ['pods/exec'],
+      severity: 'critical',
+      msg: 'Can exec into pods',
+    },
+    {
+      verbs: ['create'],
+      resources: ['serviceaccounts/token'],
+      severity: 'critical',
+      msg: 'Can create SA tokens',
+    },
+    {
+      verbs: ['impersonate'],
+      resources: ['users', 'groups', 'serviceaccounts'],
+      severity: 'critical',
+      msg: 'Can impersonate identities',
+    },
+    {
+      verbs: ['escalate'],
+      resources: ['clusterroles', 'roles'],
+      severity: 'critical',
+      msg: 'Can escalate role permissions',
+    },
+    {
+      verbs: ['bind'],
+      resources: ['clusterroles', 'roles'],
+      severity: 'critical',
+      msg: 'Can bind roles to users',
+    },
   ];
-  
+
   try {
     const response = await rbacApi.listClusterRole();
-    
+
     for (const role of response.body.items || []) {
       // Skip system roles
       if (role.metadata?.name?.startsWith('system:')) continue;
-      
+
       const rules = role.rules || [];
-      
+
       for (const rule of rules) {
         const verbs = rule.verbs || [];
         const resources = rule.resources || [];
         const apiGroups = rule.apiGroups || [''];
-        
+
         for (const dangerous of dangerousRules) {
           const hasVerb = dangerous.verbs.some(v => verbs.includes(v) || verbs.includes('*'));
-          const hasResource = dangerous.resources.some(r => resources.includes(r) || resources.includes('*'));
-          
+          const hasResource = dangerous.resources.some(
+            r => resources.includes(r) || resources.includes('*')
+          );
+
           if (hasVerb && hasResource) {
             findings.push({
               id: `k8s-clusterrole-${dangerous.severity}`,
@@ -124,9 +170,9 @@ async function scanClusterRoles(rbacApi) {
               message: dangerous.msg,
               recommendation: 'Review if these permissions are necessary. Follow least privilege.',
               details: {
-                verbs: verbs,
-                resources: resources,
-                apiGroups: apiGroups,
+                verbs,
+                resources,
+                apiGroups,
               },
             });
             break; // One finding per rule
@@ -134,11 +180,10 @@ async function scanClusterRoles(rbacApi) {
         }
       }
     }
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 
@@ -147,20 +192,20 @@ async function scanClusterRoles(rbacApi) {
  */
 async function scanClusterRoleBindings(rbacApi) {
   const findings = [];
-  
+
   // High-privilege roles to watch
   const criticalRoles = ['cluster-admin', 'admin', 'edit'];
-  
+
   try {
     const response = await rbacApi.listClusterRoleBinding();
-    
+
     for (const binding of response.body.items || []) {
       // Skip system bindings
       if (binding.metadata?.name?.startsWith('system:')) continue;
-      
+
       const roleRef = binding.roleRef;
       const subjects = binding.subjects || [];
-      
+
       // Check for critical role bindings
       if (criticalRoles.includes(roleRef?.name)) {
         for (const subject of subjects) {
@@ -174,7 +219,7 @@ async function scanClusterRoleBindings(rbacApi) {
               recommendation: 'Remove anonymous access to privileged roles immediately',
             });
           }
-          
+
           // Binding to all authenticated users
           if (subject.name === 'system:authenticated') {
             findings.push({
@@ -185,7 +230,7 @@ async function scanClusterRoleBindings(rbacApi) {
               recommendation: 'Restrict privileged roles to specific users/groups',
             });
           }
-          
+
           // Default ServiceAccount in any namespace
           if (subject.kind === 'ServiceAccount' && subject.name === 'default') {
             findings.push({
@@ -199,12 +244,13 @@ async function scanClusterRoleBindings(rbacApi) {
         }
       }
     }
-    
+
     // Count cluster-admin bindings
-    const adminBindings = response.body.items?.filter(b => 
-      b.roleRef?.name === 'cluster-admin' && !b.metadata?.name?.startsWith('system:')
-    ) || [];
-    
+    const adminBindings =
+      response.body.items?.filter(
+        b => b.roleRef?.name === 'cluster-admin' && !b.metadata?.name?.startsWith('system:')
+      ) || [];
+
     if (adminBindings.length > 5) {
       findings.push({
         id: 'k8s-too-many-cluster-admins',
@@ -214,11 +260,10 @@ async function scanClusterRoleBindings(rbacApi) {
         recommendation: 'Review and reduce cluster-admin assignments',
       });
     }
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 
@@ -227,29 +272,31 @@ async function scanClusterRoleBindings(rbacApi) {
  */
 async function scanNamespacedRBAC(rbacApi, coreApi) {
   const findings = [];
-  
+
   try {
     // Get all namespaces
     const nsResponse = await coreApi.listNamespace();
     const namespaces = nsResponse.body.items?.map(ns => ns.metadata?.name) || [];
-    
+
     // Critical namespaces to check more carefully
     const criticalNamespaces = ['kube-system', 'kube-public', 'default'];
-    
+
     for (const ns of namespaces) {
       // Skip very large number of namespaces
       if (!criticalNamespaces.includes(ns) && namespaces.length > 20) continue;
-      
+
       // Scan RoleBindings in namespace
       const rbResponse = await rbacApi.listNamespacedRoleBinding(ns);
-      
+
       for (const binding of rbResponse.body.items || []) {
         const subjects = binding.subjects || [];
-        
+
         for (const subject of subjects) {
           // Check for anonymous access in critical namespaces
-          if (criticalNamespaces.includes(ns) && 
-              (subject.name === 'system:anonymous' || subject.name === 'system:unauthenticated')) {
+          if (
+            criticalNamespaces.includes(ns) &&
+            (subject.name === 'system:anonymous' || subject.name === 'system:unauthenticated')
+          ) {
             findings.push({
               id: 'k8s-anonymous-in-critical-ns',
               severity: 'critical',
@@ -260,15 +307,17 @@ async function scanNamespacedRBAC(rbacApi, coreApi) {
           }
         }
       }
-      
+
       // Check for Roles with secrets access in kube-system
       if (ns === 'kube-system') {
         const roleResponse = await rbacApi.listNamespacedRole(ns);
-        
+
         for (const role of roleResponse.body.items || []) {
           for (const rule of role.rules || []) {
-            if (rule.resources?.includes('secrets') && 
-                (rule.verbs?.includes('*') || rule.verbs?.includes('get'))) {
+            if (
+              rule.resources?.includes('secrets') &&
+              (rule.verbs?.includes('*') || rule.verbs?.includes('get'))
+            ) {
               findings.push({
                 id: 'k8s-kube-system-secrets-access',
                 severity: 'info',
@@ -281,11 +330,10 @@ async function scanNamespacedRBAC(rbacApi, coreApi) {
         }
       }
     }
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 
@@ -294,21 +342,21 @@ async function scanNamespacedRBAC(rbacApi, coreApi) {
  */
 async function scanServiceAccounts(coreApi, rbacApi) {
   const findings = [];
-  
+
   try {
     const saResponse = await coreApi.listServiceAccountForAllNamespaces();
-    
+
     // Check for ServiceAccounts with automounted tokens (pre-1.24 behavior)
     for (const sa of saResponse.body.items || []) {
       // Skip system ServiceAccounts
       if (sa.metadata?.namespace === 'kube-system') continue;
-      
+
       // automountServiceAccountToken should be false for most SAs
       if (sa.automountServiceAccountToken !== false) {
         // This is info-level as it's the default behavior
         // Only flag if the SA has privileged bindings
       }
-      
+
       // Check for secrets associated with SA (long-lived tokens)
       if (sa.secrets?.length > 0) {
         findings.push({
@@ -320,24 +368,24 @@ async function scanServiceAccounts(coreApi, rbacApi) {
         });
       }
     }
-    
+
     // Check default ServiceAccount in each namespace
     const namespaces = new Set(saResponse.body.items?.map(sa => sa.metadata?.namespace) || []);
-    
+
     for (const ns of namespaces) {
       if (ns === 'kube-system' || ns === 'kube-public') continue;
-      
+
       const defaultSA = saResponse.body.items?.find(
         sa => sa.metadata?.namespace === ns && sa.metadata?.name === 'default'
       );
-      
+
       if (defaultSA && defaultSA.automountServiceAccountToken !== false) {
         // Check if default SA has any RoleBindings
         const rbResponse = await rbacApi.listNamespacedRoleBinding(ns);
-        const defaultBindings = rbResponse.body.items?.filter(rb => 
+        const defaultBindings = rbResponse.body.items?.filter(rb =>
           rb.subjects?.some(s => s.kind === 'ServiceAccount' && s.name === 'default')
         );
-        
+
         if (defaultBindings?.length > 0) {
           findings.push({
             id: 'k8s-default-sa-has-bindings',
@@ -349,11 +397,10 @@ async function scanServiceAccounts(coreApi, rbacApi) {
         }
       }
     }
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 
@@ -362,16 +409,16 @@ async function scanServiceAccounts(coreApi, rbacApi) {
  */
 async function checkDefaultConfigs(rbacApi, coreApi) {
   const findings = [];
-  
+
   try {
     // Check for common misconfigurations
-    
+
     // 1. system:masters group (too powerful)
     const crbResponse = await rbacApi.listClusterRoleBinding();
-    const mastersBindings = crbResponse.body.items?.filter(crb =>
-      crb.subjects?.some(s => s.name === 'system:masters')
-    ) || [];
-    
+    const mastersBindings =
+      crbResponse.body.items?.filter(crb => crb.subjects?.some(s => s.name === 'system:masters')) ||
+      [];
+
     // system:masters is fine if it's only the default binding
     if (mastersBindings.length > 1) {
       findings.push({
@@ -382,17 +429,16 @@ async function checkDefaultConfigs(rbacApi, coreApi) {
         recommendation: 'Avoid adding more bindings to system:masters',
       });
     }
-    
+
     // 2. Check for publicly accessible API server (would need network check)
     // This is typically done at infrastructure level
-    
+
     // 3. Check for deprecated API versions
     // Would need to scan all resources
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 

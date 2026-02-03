@@ -19,12 +19,24 @@ const { scanAzureAdvanced } = require('./scanners/azure-advanced.js');
 const { scanAzureTenant } = require('./scanners/azure-tenant.js');
 const { scanOCI } = require('./scanners/oracle-cloud.js');
 const { scanKubernetesRBAC } = require('./scanners/kubernetes.js');
-const { detectPrivescPaths, buildAttackGraph, AWS_PRIVESC_TECHNIQUES, AZURE_PRIVESC_TECHNIQUES, GCP_PRIVESC_TECHNIQUES } = require('./scanners/privesc-detector.js');
-const { mapToCompliance, generateComplianceSummary, generateSARIF, generateHTMLReport } = require('./compliance.js');
+const {
+  detectPrivescPaths,
+  buildAttackGraph,
+  AWS_PRIVESC_TECHNIQUES,
+  AZURE_PRIVESC_TECHNIQUES,
+  GCP_PRIVESC_TECHNIQUES,
+} = require('./scanners/privesc-detector.js');
+const { analyzeRBAC, generateRBACReport } = require('./scanners/rbac-analyzer.js');
+const {
+  mapToCompliance,
+  generateComplianceSummary,
+  generateSARIF,
+  generateHTMLReport,
+} = require('./compliance.js');
 const { Reporter } = require('./reporter.js');
 const { applyConfig, checkThresholds } = require('./config.js');
 
-const version = '0.12.0';
+const version = '0.13.0';
 
 /**
  * Scan cloud provider for IAM permission issues
@@ -34,34 +46,34 @@ const version = '0.12.0';
  */
 async function scan(provider, options = {}) {
   const reporter = new Reporter(options);
-  
+
   let findings = [];
 
   // Multi-cloud scanning
   if (provider.toLowerCase() === 'all') {
     console.log('\n🦅 PermitVet Multi-Cloud Scan\n');
-    
+
     // AWS
     if (options.aws !== false) {
       console.log('━━━ AWS ━━━');
       try {
         const awsFindings = await scanAWS(options);
         findings.push(...awsFindings);
-        
+
         // Enhanced: Access Analyzer + Advanced
         if (options.enhanced !== false) {
           console.log('  Running enhanced checks (Access Analyzer)...');
           const accessAnalyzerFindings = await scanAccessAnalyzer(options);
           findings.push(...accessAnalyzerFindings);
-          
+
           console.log('  Running advanced checks (SCPs, Boundaries, IMDSv2)...');
           const advancedFindings = await scanAWSAdvanced(options);
           findings.push(...advancedFindings);
-          
+
           // CSPM removed: secrets check
           // const secretsFindings = await scanAWSSecrets(options);
           // findings.push(...secretsFindings);
-          
+
           // CSPM removed: network check
           // const networkFindings = await scanAWSNetwork(options);
           // findings.push(...networkFindings);
@@ -70,7 +82,7 @@ async function scan(provider, options = {}) {
         console.log(`  ⚠️ AWS scan skipped: ${e.message}`);
       }
     }
-    
+
     // Azure
     if (options.azure !== false) {
       console.log('\n━━━ Azure ━━━');
@@ -81,18 +93,21 @@ async function scan(provider, options = {}) {
           const tenantFindings = await scanAzureTenant(options);
           findings.push(...tenantFindings);
         }
-        
+
         // Subscription-level scan
-        if (options.subscription || (!options.tenant && !options.managementGroup && !options.allSubscriptions)) {
+        if (
+          options.subscription ||
+          (!options.tenant && !options.managementGroup && !options.allSubscriptions)
+        ) {
           const azureFindings = await scanAzure(options);
           findings.push(...azureFindings);
-          
+
           // Enhanced: Entra ID + PIM + Advanced
           if (options.enhanced !== false) {
             console.log('  Running enhanced checks (Entra ID + PIM)...');
             const entraFindings = await scanEntraID(options);
             findings.push(...entraFindings);
-            
+
             console.log('  Running advanced checks (Management Groups, Policy)...');
             const advancedFindings = await scanAzureAdvanced(options);
             findings.push(...advancedFindings);
@@ -102,7 +117,7 @@ async function scan(provider, options = {}) {
         console.log(`  ⚠️ Azure scan skipped: ${e.message}`);
       }
     }
-    
+
     // GCP
     if (options.gcp !== false) {
       console.log('\n━━━ GCP ━━━');
@@ -113,18 +128,18 @@ async function scan(provider, options = {}) {
           const orgFindings = await scanGCPOrganization(options);
           findings.push(...orgFindings);
         }
-        
+
         // Project-level scan
         if (options.project || (!options.organization && !options.folder)) {
           const gcpFindings = await scanGCP(options);
           findings.push(...gcpFindings);
-          
+
           // Enhanced: IAM Recommender + Advanced
           if (options.enhanced !== false) {
             console.log('  Running enhanced checks (IAM Recommender)...');
             const recommenderFindings = await scanGCPRecommender(options);
             findings.push(...recommenderFindings);
-            
+
             console.log('  Running advanced checks (Org Policy, Hierarchy)...');
             const advancedFindings = await scanGCPAdvanced(options);
             findings.push(...advancedFindings);
@@ -134,7 +149,7 @@ async function scan(provider, options = {}) {
         console.log(`  ⚠️ GCP scan skipped: ${e.message}`);
       }
     }
-    
+
     // OCI (Oracle Cloud)
     if (options.oci !== false && options.oracle !== false) {
       console.log('\n━━━ Oracle Cloud (OCI) ━━━');
@@ -145,7 +160,7 @@ async function scan(provider, options = {}) {
         console.log(`  ⚠️ OCI scan skipped: ${e.message}`);
       }
     }
-    
+
     // Kubernetes
     if (options.kubernetes !== false && options.k8s !== false) {
       console.log('\n━━━ Kubernetes ━━━');
@@ -163,27 +178,27 @@ async function scan(provider, options = {}) {
     switch (provider.toLowerCase()) {
       case 'aws':
         findings = await scanAWS(options);
-        
+
         // Enhanced: Access Analyzer + Advanced + Secrets + Network
         if (options.enhanced !== false) {
           console.log('  Running enhanced checks (Access Analyzer)...');
           const accessAnalyzerFindings = await scanAccessAnalyzer(options);
           findings.push(...accessAnalyzerFindings);
-          
+
           console.log('  Running advanced checks (SCPs, Boundaries, IMDSv2)...');
           const advancedFindings = await scanAWSAdvanced(options);
           findings.push(...advancedFindings);
-          
+
           // CSPM removed: secrets check
           // const secretsFindings = await scanAWSSecrets(options);
           // findings.push(...secretsFindings);
-          
+
           // CSPM removed: network check
           // const networkFindings = await scanAWSNetwork(options);
           // findings.push(...networkFindings);
         }
         break;
-        
+
       case 'azure':
         // Tenant/Management Group level scan
         if (options.tenant || options.managementGroup || options.allSubscriptions) {
@@ -191,25 +206,28 @@ async function scan(provider, options = {}) {
           const tenantFindings = await scanAzureTenant(options);
           findings.push(...tenantFindings);
         }
-        
+
         // Subscription-level scan
-        if (options.subscription || (!options.tenant && !options.managementGroup && !options.allSubscriptions)) {
+        if (
+          options.subscription ||
+          (!options.tenant && !options.managementGroup && !options.allSubscriptions)
+        ) {
           const subFindings = await scanAzure(options);
           findings.push(...subFindings);
-          
+
           // Enhanced: Entra ID + PIM + Advanced
           if (options.enhanced !== false) {
             console.log('  Running enhanced checks (Entra ID + PIM)...');
             const entraFindings = await scanEntraID(options);
             findings.push(...entraFindings);
-            
+
             console.log('  Running advanced checks (Management Groups, Policy)...');
             const advancedFindings = await scanAzureAdvanced(options);
             findings.push(...advancedFindings);
           }
         }
         break;
-        
+
       case 'gcp':
         // Organization/Folder level scan
         if (options.organization || options.folder) {
@@ -217,35 +235,35 @@ async function scan(provider, options = {}) {
           const orgFindings = await scanGCPOrganization(options);
           findings.push(...orgFindings);
         }
-        
+
         // Project-level scan (skip if only doing org scan with --all-projects)
         if (options.project || (!options.organization && !options.folder)) {
           const projectFindings = await scanGCP(options);
           findings.push(...projectFindings);
-          
+
           // Enhanced: IAM Recommender + Advanced
           if (options.enhanced !== false) {
             console.log('  Running enhanced checks (IAM Recommender)...');
             const recommenderFindings = await scanGCPRecommender(options);
             findings.push(...recommenderFindings);
-            
+
             console.log('  Running advanced checks (Org Policy, Hierarchy)...');
             const advancedFindings = await scanGCPAdvanced(options);
             findings.push(...advancedFindings);
           }
         }
         break;
-        
+
       case 'kubernetes':
       case 'k8s':
         findings = await scanKubernetesRBAC(options);
         break;
-        
+
       case 'oci':
       case 'oracle':
         findings = await scanOCI(options);
         break;
-        
+
       default:
         throw new Error(`Unknown provider: ${provider}. Use: aws, azure, gcp, or all`);
     }
@@ -253,13 +271,13 @@ async function scan(provider, options = {}) {
 
   // Apply config file rules (exclude, rule overrides)
   findings = applyConfig(findings, options);
-  
+
   // Map findings to compliance frameworks
   findings = findings.map(mapToCompliance);
 
   // Generate output based on format
   const summary = reporter.report(findings, options);
-  
+
   // Check thresholds if configured
   if (options.thresholds) {
     const { exceeded, violations } = checkThresholds(summary, options.thresholds);
@@ -270,7 +288,7 @@ async function scan(provider, options = {}) {
       }
     }
   }
-  
+
   // Additional output formats
   if (options.format === 'sarif') {
     const sarif = generateSARIF(findings, { version });
@@ -293,13 +311,15 @@ async function scan(provider, options = {}) {
     console.log('\n📋 Compliance Summary:\n');
     for (const [id, fw] of Object.entries(compliance)) {
       const scoreEmoji = fw.score >= 80 ? '✅' : fw.score >= 60 ? '⚠️' : '❌';
-      console.log(`  ${scoreEmoji} ${fw.name} ${fw.version}: ${fw.score}% (${fw.passedControls.length}/${fw.totalControls})`);
+      console.log(
+        `  ${scoreEmoji} ${fw.name} ${fw.version}: ${fw.score}% (${fw.passedControls.length}/${fw.totalControls})`
+      );
       if (fw.failedControls.length > 0) {
         console.log(`     Failed: ${fw.failedControls.join(', ')}`);
       }
     }
   }
-  
+
   return summary;
 }
 
@@ -332,13 +352,25 @@ function getComplianceSummary(findings) {
   return generateComplianceSummary(findings);
 }
 
+/**
+ * Deep RBAC analysis including role utilization and JIT recommendations
+ * @param {string} provider - Cloud provider (aws, azure, gcp)
+ * @param {object} options - Analysis options
+ * @returns {object} RBAC analysis results
+ */
+async function analyzeRBACDeep(provider, options = {}) {
+  return analyzeRBAC(provider, options);
+}
+
 module.exports = {
   scan,
   analyzePrivesc,
+  analyzeRBACDeep,
   buildGraph,
   getComplianceSummary,
   generateSARIF,
   generateHTMLReport,
+  generateRBACReport,
   version,
   // Export technique lists for external use
   AWS_PRIVESC_TECHNIQUES,

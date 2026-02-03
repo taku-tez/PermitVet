@@ -14,12 +14,12 @@ async function scanAWS(options = {}) {
   const findings = [];
 
   try {
-    const { 
-      IAMClient, 
+    const {
+      IAMClient,
       GetAccountSummaryCommand,
       GetAccountPasswordPolicyCommand,
-      ListUsersCommand, 
-      ListRolesCommand, 
+      ListUsersCommand,
+      ListRolesCommand,
       ListPoliciesCommand,
       ListAccessKeysCommand,
       GetAccessKeyLastUsedCommand,
@@ -32,7 +32,7 @@ async function scanAWS(options = {}) {
       ListAttachedRolePoliciesCommand,
       ListRolePoliciesCommand,
     } = require('@aws-sdk/client-iam');
-    
+
     const config = options.profile ? { profile: options.profile } : {};
     const client = new IAMClient(config);
 
@@ -55,7 +55,7 @@ async function scanAWS(options = {}) {
     console.log('  Scanning IAM users...');
     const usersResponse = await client.send(new ListUsersCommand({}));
     const users = usersResponse.Users || [];
-    
+
     for (const user of users) {
       const userFindings = await scanUser(client, user);
       findings.push(...userFindings);
@@ -65,7 +65,7 @@ async function scanAWS(options = {}) {
     console.log('  Scanning IAM roles...');
     const rolesResponse = await client.send(new ListRolesCommand({}));
     const roles = rolesResponse.Roles || [];
-    
+
     for (const role of roles) {
       const roleFindings = await scanRole(client, role);
       findings.push(...roleFindings);
@@ -75,12 +75,11 @@ async function scanAWS(options = {}) {
     console.log('  Scanning IAM policies...');
     const policiesResponse = await client.send(new ListPoliciesCommand({ Scope: 'Local' }));
     const policies = policiesResponse.Policies || [];
-    
+
     for (const policy of policies) {
       const policyFindings = await scanPolicy(client, policy);
       findings.push(...policyFindings);
     }
-
   } catch (error) {
     if (error.code === 'MODULE_NOT_FOUND') {
       console.error('AWS SDK not installed. Run: npm install');
@@ -99,12 +98,12 @@ async function scanAWS(options = {}) {
  */
 async function scanAccountSummary(client) {
   const findings = [];
-  
+
   try {
     const { GetAccountSummaryCommand } = require('@aws-sdk/client-iam');
     const response = await client.send(new GetAccountSummaryCommand({}));
     const summary = response.SummaryMap;
-    
+
     // Check for root access keys (CIS 1.4)
     if (summary.AccountAccessKeysPresent > 0) {
       findings.push({
@@ -116,7 +115,7 @@ async function scanAccountSummary(client) {
         cis: '1.4',
       });
     }
-    
+
     // Check for root MFA (CIS 1.5)
     if (summary.AccountMFAEnabled === 0) {
       findings.push({
@@ -128,11 +127,10 @@ async function scanAccountSummary(client) {
         cis: '1.5',
       });
     }
-    
   } catch (error) {
     // Permission denied - skip
   }
-  
+
   return findings;
 }
 
@@ -141,12 +139,12 @@ async function scanAccountSummary(client) {
  */
 async function scanPasswordPolicy(client) {
   const findings = [];
-  
+
   try {
     const { GetAccountPasswordPolicyCommand } = require('@aws-sdk/client-iam');
     const response = await client.send(new GetAccountPasswordPolicyCommand({}));
     const policy = response.PasswordPolicy;
-    
+
     // Minimum length (CIS 1.8)
     if (policy.MinimumPasswordLength < 14) {
       findings.push({
@@ -158,7 +156,7 @@ async function scanPasswordPolicy(client) {
         cis: '1.8',
       });
     }
-    
+
     // Password reuse (CIS 1.9)
     if (!policy.PasswordReusePrevention || policy.PasswordReusePrevention < 24) {
       findings.push({
@@ -170,7 +168,7 @@ async function scanPasswordPolicy(client) {
         cis: '1.9',
       });
     }
-    
+
     // Complexity requirements
     if (!policy.RequireUppercaseCharacters) {
       findings.push({
@@ -181,7 +179,7 @@ async function scanPasswordPolicy(client) {
         recommendation: 'Require at least one uppercase letter',
       });
     }
-    
+
     if (!policy.RequireLowercaseCharacters) {
       findings.push({
         id: 'aws-password-no-lowercase',
@@ -191,7 +189,7 @@ async function scanPasswordPolicy(client) {
         recommendation: 'Require at least one lowercase letter',
       });
     }
-    
+
     if (!policy.RequireNumbers) {
       findings.push({
         id: 'aws-password-no-numbers',
@@ -201,7 +199,7 @@ async function scanPasswordPolicy(client) {
         recommendation: 'Require at least one number',
       });
     }
-    
+
     if (!policy.RequireSymbols) {
       findings.push({
         id: 'aws-password-no-symbols',
@@ -211,7 +209,6 @@ async function scanPasswordPolicy(client) {
         recommendation: 'Require at least one symbol',
       });
     }
-    
   } catch (error) {
     if (error.name === 'NoSuchEntityException') {
       findings.push({
@@ -223,7 +220,7 @@ async function scanPasswordPolicy(client) {
       });
     }
   }
-  
+
   return findings;
 }
 
@@ -232,10 +229,13 @@ async function scanPasswordPolicy(client) {
  */
 async function scanCredentialReport(client) {
   const findings = [];
-  
+
   try {
-    const { GenerateCredentialReportCommand, GetCredentialReportCommand } = require('@aws-sdk/client-iam');
-    
+    const {
+      GenerateCredentialReportCommand,
+      GetCredentialReportCommand,
+    } = require('@aws-sdk/client-iam');
+
     // Generate report
     let reportReady = false;
     for (let i = 0; i < 10 && !reportReady; i++) {
@@ -246,22 +246,24 @@ async function scanCredentialReport(client) {
         await new Promise(r => setTimeout(r, 1000));
       }
     }
-    
+
     if (!reportReady) return findings;
-    
+
     // Get report
     const response = await client.send(new GetCredentialReportCommand({}));
     const reportCsv = Buffer.from(response.Content).toString('utf-8');
     const lines = reportCsv.split('\n');
     const headers = lines[0].split(',');
-    
+
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
-      
+
       const values = lines[i].split(',');
       const user = {};
-      headers.forEach((h, idx) => user[h] = values[idx]);
-      
+      headers.forEach((h, idx) => {
+        user[h] = values[idx];
+      });
+
       // Skip root for user-specific checks
       if (user.user === '<root_account>') {
         // Check root last used (CIS 1.7)
@@ -281,7 +283,7 @@ async function scanCredentialReport(client) {
         }
         continue;
       }
-      
+
       // Check user inactivity (CIS 1.12)
       if (user.password_enabled === 'true' && user.password_last_used !== 'no_information') {
         const lastUsed = new Date(user.password_last_used);
@@ -297,7 +299,7 @@ async function scanCredentialReport(client) {
           });
         }
       }
-      
+
       // Check MFA for console users (CIS 1.10)
       if (user.password_enabled === 'true' && user.mfa_active === 'false') {
         findings.push({
@@ -309,7 +311,7 @@ async function scanCredentialReport(client) {
           cis: '1.10',
         });
       }
-      
+
       // Check access key age (CIS 1.14)
       for (const keyNum of ['1', '2']) {
         if (user[`access_key_${keyNum}_active`] === 'true') {
@@ -328,11 +330,10 @@ async function scanCredentialReport(client) {
         }
       }
     }
-    
   } catch (error) {
     // Permission denied - skip
   }
-  
+
   return findings;
 }
 
@@ -341,17 +342,19 @@ async function scanCredentialReport(client) {
  */
 async function scanUser(client, user) {
   const findings = [];
-  
+
   try {
-    const { 
-      ListAttachedUserPoliciesCommand, 
+    const {
+      ListAttachedUserPoliciesCommand,
       ListUserPoliciesCommand,
       ListAccessKeysCommand,
       GetAccessKeyLastUsedCommand,
     } = require('@aws-sdk/client-iam');
-    
+
     // Check for policies attached directly to user (CIS 1.15)
-    const attachedResponse = await client.send(new ListAttachedUserPoliciesCommand({ UserName: user.UserName }));
+    const attachedResponse = await client.send(
+      new ListAttachedUserPoliciesCommand({ UserName: user.UserName })
+    );
     if (attachedResponse.AttachedPolicies?.length > 0) {
       findings.push({
         id: 'aws-policy-attached-to-user',
@@ -362,9 +365,11 @@ async function scanUser(client, user) {
         cis: '1.15',
       });
     }
-    
+
     // Check for inline policies (CIS 1.16)
-    const inlineResponse = await client.send(new ListUserPoliciesCommand({ UserName: user.UserName }));
+    const inlineResponse = await client.send(
+      new ListUserPoliciesCommand({ UserName: user.UserName })
+    );
     if (inlineResponse.PolicyNames?.length > 0) {
       findings.push({
         id: 'aws-inline-policy-user',
@@ -375,11 +380,11 @@ async function scanUser(client, user) {
         cis: '1.16',
       });
     }
-    
+
     // Check for multiple access keys
     const keysResponse = await client.send(new ListAccessKeysCommand({ UserName: user.UserName }));
     const activeKeys = keysResponse.AccessKeyMetadata?.filter(k => k.Status === 'Active') || [];
-    
+
     if (activeKeys.length > 1) {
       findings.push({
         id: 'aws-multiple-access-keys',
@@ -389,10 +394,12 @@ async function scanUser(client, user) {
         recommendation: 'Limit to one active access key per user',
       });
     }
-    
+
     // Check for unused access keys
     for (const key of activeKeys) {
-      const lastUsedResponse = await client.send(new GetAccessKeyLastUsedCommand({ AccessKeyId: key.AccessKeyId }));
+      const lastUsedResponse = await client.send(
+        new GetAccessKeyLastUsedCommand({ AccessKeyId: key.AccessKeyId })
+      );
       if (!lastUsedResponse.AccessKeyLastUsed?.LastUsedDate) {
         findings.push({
           id: 'aws-access-key-unused',
@@ -403,7 +410,6 @@ async function scanUser(client, user) {
         });
       }
     }
-    
   } catch (error) {
     // Permission denied - skip
   }
@@ -416,22 +422,22 @@ async function scanUser(client, user) {
  */
 async function scanRole(client, role) {
   const findings = [];
-  
+
   // Skip service-linked roles
   if (role.Path?.startsWith('/aws-service-role/')) {
     return findings;
   }
-  
+
   try {
-    const { 
-      ListAttachedRolePoliciesCommand, 
+    const {
+      ListAttachedRolePoliciesCommand,
       ListRolePoliciesCommand,
       GetPolicyVersionCommand,
     } = require('@aws-sdk/client-iam');
-    
+
     // Analyze trust policy
     const trustPolicy = JSON.parse(decodeURIComponent(role.AssumeRolePolicyDocument || '{}'));
-    
+
     for (const statement of trustPolicy.Statement || []) {
       // Open trust policy (Principal: *)
       if (statement.Principal === '*' || statement.Principal?.AWS === '*') {
@@ -443,7 +449,7 @@ async function scanRole(client, role) {
           recommendation: 'Restrict trust policy to specific principals',
         });
       }
-      
+
       // Cross-account trust
       const awsPrincipal = statement.Principal?.AWS;
       if (awsPrincipal && awsPrincipal !== '*') {
@@ -461,7 +467,7 @@ async function scanRole(client, role) {
                 recommendation: 'Use ExternalId to prevent confused deputy attacks',
               });
             }
-            
+
             findings.push({
               id: 'aws-cross-account-trust',
               severity: 'info',
@@ -473,9 +479,11 @@ async function scanRole(client, role) {
         }
       }
     }
-    
+
     // Check inline policies
-    const inlineResponse = await client.send(new ListRolePoliciesCommand({ RoleName: role.RoleName }));
+    const inlineResponse = await client.send(
+      new ListRolePoliciesCommand({ RoleName: role.RoleName })
+    );
     if (inlineResponse.PolicyNames?.length > 0) {
       findings.push({
         id: 'aws-inline-policy-role',
@@ -485,18 +493,23 @@ async function scanRole(client, role) {
         recommendation: 'Consider using managed policies',
       });
     }
-    
+
     // Analyze attached policies for dangerous permissions
-    const attachedResponse = await client.send(new ListAttachedRolePoliciesCommand({ RoleName: role.RoleName }));
+    const attachedResponse = await client.send(
+      new ListAttachedRolePoliciesCommand({ RoleName: role.RoleName })
+    );
     for (const policy of attachedResponse.AttachedPolicies || []) {
       // Skip AWS managed policies (they start with arn:aws:iam::aws:)
       if (policy.PolicyArn?.startsWith('arn:aws:iam::aws:')) continue;
-      
+
       // Analyze customer managed policies
-      const policyFindings = await analyzePolicyDocument(client, policy.PolicyArn, `Role/${role.RoleName}`);
+      const policyFindings = await analyzePolicyDocument(
+        client,
+        policy.PolicyArn,
+        `Role/${role.RoleName}`
+      );
       findings.push(...policyFindings);
     }
-    
   } catch (error) {
     // Permission denied - skip
   }
@@ -516,25 +529,31 @@ async function scanPolicy(client, policy) {
  */
 async function analyzePolicyDocument(client, policyArn, resourcePrefix) {
   const findings = [];
-  
+
   try {
     const { GetPolicyCommand, GetPolicyVersionCommand } = require('@aws-sdk/client-iam');
-    
+
     // Get policy version
     const policyResponse = await client.send(new GetPolicyCommand({ PolicyArn: policyArn }));
-    const versionResponse = await client.send(new GetPolicyVersionCommand({
-      PolicyArn: policyArn,
-      VersionId: policyResponse.Policy.DefaultVersionId,
-    }));
-    
-    const policyDoc = JSON.parse(decodeURIComponent(versionResponse.PolicyVersion?.Document || '{}'));
-    
+    const versionResponse = await client.send(
+      new GetPolicyVersionCommand({
+        PolicyArn: policyArn,
+        VersionId: policyResponse.Policy.DefaultVersionId,
+      })
+    );
+
+    const policyDoc = JSON.parse(
+      decodeURIComponent(versionResponse.PolicyVersion?.Document || '{}')
+    );
+
     for (const statement of policyDoc.Statement || []) {
       if (statement.Effect !== 'Allow') continue;
-      
+
       const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
-      const resources = Array.isArray(statement.Resource) ? statement.Resource : [statement.Resource];
-      
+      const resources = Array.isArray(statement.Resource)
+        ? statement.Resource
+        : [statement.Resource];
+
       // Full admin access (*:*)
       if (actions.includes('*') && resources.includes('*')) {
         findings.push({
@@ -546,26 +565,74 @@ async function analyzePolicyDocument(client, policyArn, resourcePrefix) {
         });
         continue; // No need to check other rules
       }
-      
+
       // Check for dangerous actions
       const dangerousPatterns = [
-        { pattern: /^iam:\*$/, id: 'aws-iam-full-access', severity: 'critical', msg: 'Full IAM access (iam:*)' },
-        { pattern: /^sts:AssumeRole$/, resource: '*', id: 'aws-sts-assume-any-role', severity: 'critical', msg: 'Can assume any role' },
-        { pattern: /^iam:PassRole$/, resource: '*', id: 'aws-pass-role-any', severity: 'critical', msg: 'Can pass any role' },
-        { pattern: /^iam:CreatePolicyVersion$/, id: 'aws-create-policy-version', severity: 'warning', msg: 'Can create policy versions' },
-        { pattern: /^iam:(Attach|Put)(User|Role|Group)Policy$/, id: 'aws-attach-policy', severity: 'warning', msg: 'Can attach policies' },
-        { pattern: /^iam:CreateAccessKey$/, id: 'aws-create-access-key', severity: 'warning', msg: 'Can create access keys' },
-        { pattern: /^s3:\*$/, id: 'aws-s3-full-access', severity: 'warning', msg: 'Full S3 access' },
-        { pattern: /^ec2:\*$/, id: 'aws-ec2-full-access', severity: 'warning', msg: 'Full EC2 access' },
-        { pattern: /^lambda:InvokeFunction$/, resource: '*', id: 'aws-lambda-invoke-any', severity: 'warning', msg: 'Can invoke any Lambda' },
+        {
+          pattern: /^iam:\*$/,
+          id: 'aws-iam-full-access',
+          severity: 'critical',
+          msg: 'Full IAM access (iam:*)',
+        },
+        {
+          pattern: /^sts:AssumeRole$/,
+          resource: '*',
+          id: 'aws-sts-assume-any-role',
+          severity: 'critical',
+          msg: 'Can assume any role',
+        },
+        {
+          pattern: /^iam:PassRole$/,
+          resource: '*',
+          id: 'aws-pass-role-any',
+          severity: 'critical',
+          msg: 'Can pass any role',
+        },
+        {
+          pattern: /^iam:CreatePolicyVersion$/,
+          id: 'aws-create-policy-version',
+          severity: 'warning',
+          msg: 'Can create policy versions',
+        },
+        {
+          pattern: /^iam:(Attach|Put)(User|Role|Group)Policy$/,
+          id: 'aws-attach-policy',
+          severity: 'warning',
+          msg: 'Can attach policies',
+        },
+        {
+          pattern: /^iam:CreateAccessKey$/,
+          id: 'aws-create-access-key',
+          severity: 'warning',
+          msg: 'Can create access keys',
+        },
+        {
+          pattern: /^s3:\*$/,
+          id: 'aws-s3-full-access',
+          severity: 'warning',
+          msg: 'Full S3 access',
+        },
+        {
+          pattern: /^ec2:\*$/,
+          id: 'aws-ec2-full-access',
+          severity: 'warning',
+          msg: 'Full EC2 access',
+        },
+        {
+          pattern: /^lambda:InvokeFunction$/,
+          resource: '*',
+          id: 'aws-lambda-invoke-any',
+          severity: 'warning',
+          msg: 'Can invoke any Lambda',
+        },
       ];
-      
+
       for (const action of actions) {
         for (const dp of dangerousPatterns) {
           if (dp.pattern.test(action)) {
             // Check resource constraint if required
             if (dp.resource && !resources.includes(dp.resource)) continue;
-            
+
             findings.push({
               id: dp.id,
               severity: dp.severity,
@@ -576,14 +643,16 @@ async function analyzePolicyDocument(client, policyArn, resourcePrefix) {
           }
         }
       }
-      
+
       // Check for privilege escalation paths
       const canCreateUser = actions.some(a => /^iam:CreateUser$/.test(a));
-      const canAttachPolicy = actions.some(a => /^iam:(Attach|Put)(User|Role|Group)Policy$/.test(a));
+      const canAttachPolicy = actions.some(a =>
+        /^iam:(Attach|Put)(User|Role|Group)Policy$/.test(a)
+      );
       const canPassRole = actions.some(a => /^iam:PassRole$/.test(a));
       const canCreateRole = actions.some(a => /^iam:CreateRole$/.test(a));
       const canCreateLambda = actions.some(a => /^lambda:CreateFunction$/.test(a));
-      
+
       if (canCreateUser && canAttachPolicy) {
         findings.push({
           id: 'aws-privesc-create-user',
@@ -593,7 +662,7 @@ async function analyzePolicyDocument(client, policyArn, resourcePrefix) {
           recommendation: 'This combination allows creating admin users',
         });
       }
-      
+
       if (canCreateRole && canPassRole) {
         findings.push({
           id: 'aws-privesc-create-role',
@@ -603,7 +672,7 @@ async function analyzePolicyDocument(client, policyArn, resourcePrefix) {
           recommendation: 'This combination allows assuming any permissions',
         });
       }
-      
+
       if (canCreateLambda && canPassRole) {
         findings.push({
           id: 'aws-privesc-lambda-passrole',
@@ -614,11 +683,10 @@ async function analyzePolicyDocument(client, policyArn, resourcePrefix) {
         });
       }
     }
-    
   } catch (error) {
     // Permission denied or policy not found - skip
   }
-  
+
   return findings;
 }
 

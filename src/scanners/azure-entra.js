@@ -14,14 +14,16 @@ async function scanEntraID(options = {}) {
   try {
     const { ClientSecretCredential, DefaultAzureCredential } = require('@azure/identity');
     const { Client } = require('@microsoft/microsoft-graph-client');
-    const { TokenCredentialAuthenticationProvider } = require('@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials');
-    
+    const {
+      TokenCredentialAuthenticationProvider,
+    } = require('@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials');
+
     // Initialize Graph client
     const credential = new DefaultAzureCredential();
     const authProvider = new TokenCredentialAuthenticationProvider(credential, {
       scopes: ['https://graph.microsoft.com/.default'],
     });
-    
+
     const graphClient = Client.initWithMiddleware({ authProvider });
 
     // 1. Scan Directory Roles (Global Admin, etc.)
@@ -58,10 +60,11 @@ async function scanEntraID(options = {}) {
     console.log('  Scanning guest users...');
     const guestFindings = await scanGuestUsers(graphClient);
     findings.push(...guestFindings);
-
   } catch (error) {
     if (error.code === 'MODULE_NOT_FOUND') {
-      console.error('Microsoft Graph SDK not installed. Run: npm install @microsoft/microsoft-graph-client @azure/identity');
+      console.error(
+        'Microsoft Graph SDK not installed. Run: npm install @microsoft/microsoft-graph-client @azure/identity'
+      );
     } else if (error.code === 'Authorization_RequestDenied') {
       findings.push({
         id: 'azure-entra-permission-denied',
@@ -83,7 +86,7 @@ async function scanEntraID(options = {}) {
  */
 async function scanDirectoryRoles(graphClient) {
   const findings = [];
-  
+
   // Critical roles to monitor
   const criticalRoles = {
     '62e90394-69f5-4237-9190-012177145e10': 'Global Administrator',
@@ -97,18 +100,16 @@ async function scanDirectoryRoles(graphClient) {
     '29232cdf-9323-42fd-ade2-1d097af3e4de': 'Exchange Administrator',
     'f28a1f50-f6e7-4571-818b-6a12f2af6b6c': 'SharePoint Administrator',
   };
-  
+
   try {
     // Get all directory roles with members
-    const roles = await graphClient.api('/directoryRoles')
-      .expand('members')
-      .get();
-    
+    const roles = await graphClient.api('/directoryRoles').expand('members').get();
+
     for (const role of roles.value || []) {
       const roleTemplateId = role.roleTemplateId;
       const roleName = role.displayName;
       const members = role.members || [];
-      
+
       // Check if this is a critical role
       if (criticalRoles[roleTemplateId]) {
         // Too many Global Admins
@@ -134,7 +135,7 @@ async function scanDirectoryRoles(graphClient) {
             });
           }
         }
-        
+
         // Check each member of critical roles
         for (const member of members) {
           // Guest users in privileged roles
@@ -148,10 +149,12 @@ async function scanDirectoryRoles(graphClient) {
               cis: '1.3',
             });
           }
-          
+
           // Service principals in Global Admin (risky)
-          if (member['@odata.type'] === '#microsoft.graph.servicePrincipal' && 
-              roleTemplateId === '62e90394-69f5-4237-9190-012177145e10') {
+          if (
+            member['@odata.type'] === '#microsoft.graph.servicePrincipal' &&
+            roleTemplateId === '62e90394-69f5-4237-9190-012177145e10'
+          ) {
             findings.push({
               id: 'azure-sp-global-admin',
               severity: 'critical',
@@ -163,11 +166,10 @@ async function scanDirectoryRoles(graphClient) {
         }
       }
     }
-    
   } catch (error) {
     if (error.code !== 'Authorization_RequestDenied') throw error;
   }
-  
+
   return findings;
 }
 
@@ -176,16 +178,18 @@ async function scanDirectoryRoles(graphClient) {
  */
 async function scanPIMRoleAssignments(graphClient) {
   const findings = [];
-  
+
   try {
     // Get eligible role assignments
-    const eligibleAssignments = await graphClient.api('/roleManagement/directory/roleEligibilityScheduleInstances')
+    const eligibleAssignments = await graphClient
+      .api('/roleManagement/directory/roleEligibilityScheduleInstances')
       .get();
-    
+
     // Get active role assignments
-    const activeAssignments = await graphClient.api('/roleManagement/directory/roleAssignmentScheduleInstances')
+    const activeAssignments = await graphClient
+      .api('/roleManagement/directory/roleAssignmentScheduleInstances')
       .get();
-    
+
     // Check for permanent (non-PIM) assignments to privileged roles
     for (const assignment of activeAssignments.value || []) {
       // Permanent assignments (no end date)
@@ -200,7 +204,7 @@ async function scanPIMRoleAssignments(graphClient) {
         });
       }
     }
-    
+
     // Check for stale eligible assignments (not activated in 90+ days)
     const now = new Date();
     for (const assignment of eligibleAssignments.value || []) {
@@ -209,7 +213,7 @@ async function scanPIMRoleAssignments(graphClient) {
       if (assignment.startDateTime) {
         const startDate = new Date(assignment.startDateTime);
         const daysSinceStart = (now - startDate) / (1000 * 60 * 60 * 24);
-        
+
         if (daysSinceStart > 365) {
           findings.push({
             id: 'azure-stale-eligible-assignment',
@@ -221,11 +225,10 @@ async function scanPIMRoleAssignments(graphClient) {
         }
       }
     }
-    
   } catch (error) {
     if (error.code !== 'Authorization_RequestDenied') throw error;
   }
-  
+
   return findings;
 }
 
@@ -234,17 +237,17 @@ async function scanPIMRoleAssignments(graphClient) {
  */
 async function scanPIMSettings(graphClient) {
   const findings = [];
-  
+
   try {
     // Get role management policies
-    const policies = await graphClient.api('/policies/roleManagementPolicies')
-      .get();
-    
+    const policies = await graphClient.api('/policies/roleManagementPolicies').get();
+
     for (const policy of policies.value || []) {
       // Get policy rules
-      const rules = await graphClient.api(`/policies/roleManagementPolicies/${policy.id}/rules`)
+      const rules = await graphClient
+        .api(`/policies/roleManagementPolicies/${policy.id}/rules`)
         .get();
-      
+
       for (const rule of rules.value || []) {
         // Check activation rules
         if (rule['@odata.type'] === '#microsoft.graph.unifiedRoleManagementPolicyExpirationRule') {
@@ -258,11 +261,12 @@ async function scanPIMSettings(graphClient) {
               recommendation: 'Require activation expiration for privileged roles',
             });
           }
-          
+
           // Long activation duration (> 8 hours)
           if (rule.maximumDuration) {
             const duration = parseDuration(rule.maximumDuration);
-            if (duration > 8 * 60 * 60 * 1000) { // 8 hours in ms
+            if (duration > 8 * 60 * 60 * 1000) {
+              // 8 hours in ms
               findings.push({
                 id: 'azure-pim-long-activation',
                 severity: 'info',
@@ -273,9 +277,12 @@ async function scanPIMSettings(graphClient) {
             }
           }
         }
-        
+
         // Check MFA requirement
-        if (rule['@odata.type'] === '#microsoft.graph.unifiedRoleManagementPolicyAuthenticationContextRule') {
+        if (
+          rule['@odata.type'] ===
+          '#microsoft.graph.unifiedRoleManagementPolicyAuthenticationContextRule'
+        ) {
           if (!rule.isEnabled) {
             findings.push({
               id: 'azure-pim-no-mfa',
@@ -287,7 +294,7 @@ async function scanPIMSettings(graphClient) {
             });
           }
         }
-        
+
         // Check approval requirement
         if (rule['@odata.type'] === '#microsoft.graph.unifiedRoleManagementPolicyApprovalRule') {
           if (!rule.setting?.isApprovalRequired) {
@@ -303,11 +310,10 @@ async function scanPIMSettings(graphClient) {
         }
       }
     }
-    
   } catch (error) {
     if (error.code !== 'Authorization_RequestDenied') throw error;
   }
-  
+
   return findings;
 }
 
@@ -316,23 +322,33 @@ async function scanPIMSettings(graphClient) {
  */
 async function scanAppRegistrations(graphClient) {
   const findings = [];
-  
+
   // Dangerous Microsoft Graph permissions
   const dangerousPermissions = {
     // Application permissions (more dangerous)
-    '1bfefb4e-e0b5-418b-a88f-73c46d2cc8e9': { name: 'Application.ReadWrite.All', severity: 'critical' },
-    '19dbc75e-c2e2-444c-a770-ec69d8559fc7': { name: 'Directory.ReadWrite.All', severity: 'critical' },
-    '9e3f62cf-ca93-4989-b6ce-bf83c28f9fe8': { name: 'RoleManagement.ReadWrite.Directory', severity: 'critical' },
+    '1bfefb4e-e0b5-418b-a88f-73c46d2cc8e9': {
+      name: 'Application.ReadWrite.All',
+      severity: 'critical',
+    },
+    '19dbc75e-c2e2-444c-a770-ec69d8559fc7': {
+      name: 'Directory.ReadWrite.All',
+      severity: 'critical',
+    },
+    '9e3f62cf-ca93-4989-b6ce-bf83c28f9fe8': {
+      name: 'RoleManagement.ReadWrite.Directory',
+      severity: 'critical',
+    },
     'e12dae10-5a57-4817-b79d-dfbec5c3b589': { name: 'Mail.ReadWrite', severity: 'warning' },
     '75359482-378d-4052-8f01-80520e7db3cd': { name: 'Files.ReadWrite.All', severity: 'warning' },
     '01d4889c-1287-42c6-ac1f-5d1e02578ef6': { name: 'Files.Read.All', severity: 'info' },
   };
-  
+
   try {
-    const apps = await graphClient.api('/applications')
+    const apps = await graphClient
+      .api('/applications')
       .select('id,displayName,requiredResourceAccess,passwordCredentials,keyCredentials')
       .get();
-    
+
     for (const app of apps.value || []) {
       // Check for dangerous permissions
       for (const resource of app.requiredResourceAccess || []) {
@@ -342,7 +358,7 @@ async function scanAppRegistrations(graphClient) {
             if (dangerousPermissions[access.id]) {
               const perm = dangerousPermissions[access.id];
               const isAppPermission = access.type === 'Role';
-              
+
               findings.push({
                 id: `azure-app-${perm.severity}-permission`,
                 severity: isAppPermission ? perm.severity : 'info',
@@ -354,14 +370,14 @@ async function scanAppRegistrations(graphClient) {
           }
         }
       }
-      
+
       // Check for expiring/expired credentials
       for (const cred of [...(app.passwordCredentials || []), ...(app.keyCredentials || [])]) {
         if (cred.endDateTime) {
           const endDate = new Date(cred.endDateTime);
           const now = new Date();
           const daysUntilExpiry = (endDate - now) / (1000 * 60 * 60 * 24);
-          
+
           if (daysUntilExpiry < 0) {
             findings.push({
               id: 'azure-app-expired-credential',
@@ -380,12 +396,12 @@ async function scanAppRegistrations(graphClient) {
             });
           }
         }
-        
+
         // Check for long-lived credentials (> 2 years)
         if (cred.startDateTime && cred.endDateTime) {
           const duration = new Date(cred.endDateTime) - new Date(cred.startDateTime);
           const years = duration / (1000 * 60 * 60 * 24 * 365);
-          
+
           if (years > 2) {
             findings.push({
               id: 'azure-app-long-credential',
@@ -398,11 +414,10 @@ async function scanAppRegistrations(graphClient) {
         }
       }
     }
-    
   } catch (error) {
     if (error.code !== 'Authorization_RequestDenied') throw error;
   }
-  
+
   return findings;
 }
 
@@ -411,23 +426,24 @@ async function scanAppRegistrations(graphClient) {
  */
 async function scanServicePrincipals(graphClient) {
   const findings = [];
-  
+
   try {
     // Get service principals with app role assignments
-    const servicePrincipals = await graphClient.api('/servicePrincipals')
+    const servicePrincipals = await graphClient
+      .api('/servicePrincipals')
       .filter("servicePrincipalType eq 'Application'")
       .select('id,displayName,appRoleAssignments')
       .expand('appRoleAssignments')
       .top(100)
       .get();
-    
+
     for (const sp of servicePrincipals.value || []) {
       // Check for high-privilege app role assignments
       for (const assignment of sp.appRoleAssignments || []) {
         // Would need to resolve appRoleId to name for full check
         // For now, flag SPs with many assignments
       }
-      
+
       if ((sp.appRoleAssignments?.length || 0) > 10) {
         findings.push({
           id: 'azure-sp-many-permissions',
@@ -438,11 +454,10 @@ async function scanServicePrincipals(graphClient) {
         });
       }
     }
-    
   } catch (error) {
     if (error.code !== 'Authorization_RequestDenied') throw error;
   }
-  
+
   return findings;
 }
 
@@ -451,11 +466,10 @@ async function scanServicePrincipals(graphClient) {
  */
 async function scanConditionalAccess(graphClient) {
   const findings = [];
-  
+
   try {
-    const policies = await graphClient.api('/identity/conditionalAccess/policies')
-      .get();
-    
+    const policies = await graphClient.api('/identity/conditionalAccess/policies').get();
+
     // Check if no CA policies exist
     if (!policies.value || policies.value.length === 0) {
       findings.push({
@@ -467,35 +481,37 @@ async function scanConditionalAccess(graphClient) {
       });
       return findings;
     }
-    
+
     // Check for specific policy requirements
     let hasMFAPolicy = false;
     let hasBlockLegacyAuth = false;
     let hasRiskySignInPolicy = false;
-    
+
     for (const policy of policies.value) {
       if (policy.state !== 'enabled') continue;
-      
+
       const grantControls = policy.grantControls;
       const conditions = policy.conditions;
-      
+
       // MFA requirement
       if (grantControls?.builtInControls?.includes('mfa')) {
         hasMFAPolicy = true;
       }
-      
+
       // Block legacy authentication
-      if (grantControls?.builtInControls?.includes('block') &&
-          conditions?.clientAppTypes?.includes('other')) {
+      if (
+        grantControls?.builtInControls?.includes('block') &&
+        conditions?.clientAppTypes?.includes('other')
+      ) {
         hasBlockLegacyAuth = true;
       }
-      
+
       // Sign-in risk policy
       if (conditions?.signInRiskLevels?.length > 0) {
         hasRiskySignInPolicy = true;
       }
     }
-    
+
     if (!hasMFAPolicy) {
       findings.push({
         id: 'azure-no-mfa-policy',
@@ -506,7 +522,7 @@ async function scanConditionalAccess(graphClient) {
         cis: '1.1.3',
       });
     }
-    
+
     if (!hasBlockLegacyAuth) {
       findings.push({
         id: 'azure-legacy-auth-allowed',
@@ -517,7 +533,7 @@ async function scanConditionalAccess(graphClient) {
         cis: '1.1.6',
       });
     }
-    
+
     if (!hasRiskySignInPolicy) {
       findings.push({
         id: 'azure-no-risk-policy',
@@ -527,11 +543,10 @@ async function scanConditionalAccess(graphClient) {
         recommendation: 'Create policies that respond to risky sign-ins',
       });
     }
-    
   } catch (error) {
     if (error.code !== 'Authorization_RequestDenied') throw error;
   }
-  
+
   return findings;
 }
 
@@ -540,21 +555,22 @@ async function scanConditionalAccess(graphClient) {
  */
 async function scanGuestUsers(graphClient) {
   const findings = [];
-  
+
   try {
-    const guests = await graphClient.api('/users')
+    const guests = await graphClient
+      .api('/users')
       .filter("userType eq 'Guest'")
       .select('id,displayName,userPrincipalName,createdDateTime,signInActivity')
       .get();
-    
+
     const now = new Date();
-    
+
     for (const guest of guests.value || []) {
       // Check for stale guest accounts (no sign-in in 90+ days)
       if (guest.signInActivity?.lastSignInDateTime) {
         const lastSignIn = new Date(guest.signInActivity.lastSignInDateTime);
         const daysSinceSignIn = (now - lastSignIn) / (1000 * 60 * 60 * 24);
-        
+
         if (daysSinceSignIn > 90) {
           findings.push({
             id: 'azure-stale-guest',
@@ -565,12 +581,12 @@ async function scanGuestUsers(graphClient) {
           });
         }
       }
-      
+
       // Check for old guest accounts without activity
       if (guest.createdDateTime) {
         const created = new Date(guest.createdDateTime);
         const daysSinceCreation = (now - created) / (1000 * 60 * 60 * 24);
-        
+
         if (daysSinceCreation > 365 && !guest.signInActivity?.lastSignInDateTime) {
           findings.push({
             id: 'azure-old-unused-guest',
@@ -582,7 +598,7 @@ async function scanGuestUsers(graphClient) {
         }
       }
     }
-    
+
     // Too many guest users warning
     if (guests.value?.length > 100) {
       findings.push({
@@ -593,11 +609,10 @@ async function scanGuestUsers(graphClient) {
         recommendation: 'Regularly review and clean up guest accounts',
       });
     }
-    
   } catch (error) {
     if (error.code !== 'Authorization_RequestDenied') throw error;
   }
-  
+
   return findings;
 }
 
@@ -607,12 +622,12 @@ async function scanGuestUsers(graphClient) {
 function parseDuration(duration) {
   const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
   if (!match) return 0;
-  
+
   let ms = 0;
-  if (match[1]) ms += parseInt(match[1]) * 60 * 60 * 1000;
-  if (match[2]) ms += parseInt(match[2]) * 60 * 1000;
-  if (match[3]) ms += parseInt(match[3]) * 1000;
-  
+  if (match[1]) ms += parseInt(match[1], 10) * 60 * 60 * 1000;
+  if (match[2]) ms += parseInt(match[2], 10) * 60 * 1000;
+  if (match[3]) ms += parseInt(match[3], 10) * 1000;
+
   return ms;
 }
 

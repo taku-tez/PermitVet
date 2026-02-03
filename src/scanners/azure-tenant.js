@@ -16,46 +16,44 @@ async function scanAzureTenant(options = {}) {
     const { ManagementGroupsAPI } = require('@azure/arm-managementgroups');
     const { AuthorizationManagementClient } = require('@azure/arm-authorization');
     const { SubscriptionClient } = require('@azure/arm-subscriptions');
-    
+
     const credential = new DefaultAzureCredential();
-    
+
     const tenantId = options.tenant;
     const managementGroupId = options.managementGroup;
     const allSubscriptions = options.allSubscriptions;
-    
+
     if (tenantId || managementGroupId) {
       // Tenant/Management Group scan
       const mgId = managementGroupId || tenantId; // Root MG often has tenant ID
       console.log(`  Scanning management group: ${mgId}...`);
-      
+
       // 1. Management Group IAM Policy
       console.log('  Checking management group role assignments...');
       const mgIamFindings = await scanManagementGroupIAM(credential, mgId);
       findings.push(...mgIamFindings);
-      
+
       // 2. Management Group Hierarchy Analysis
       console.log('  Analyzing management group hierarchy...');
       const hierarchyFindings = await analyzeManagementGroupHierarchy(credential, mgId);
       findings.push(...hierarchyFindings);
-      
+
       // 3. Tenant-level Custom Role Definitions
       console.log('  Scanning tenant custom roles...');
       const roleFindings = await scanTenantCustomRoles(credential, mgId);
       findings.push(...roleFindings);
-      
+
       // 4. All subscriptions (if requested)
       if (allSubscriptions) {
         console.log('  Scanning all subscriptions...');
         const subFindings = await scanAllSubscriptions(credential, mgId);
         findings.push(...subFindings);
       }
-      
     } else if (allSubscriptions) {
       // Scan all accessible subscriptions without MG context
       console.log('  Scanning all accessible subscriptions...');
       const subFindings = await scanAccessibleSubscriptions(credential);
       findings.push(...subFindings);
-      
     } else {
       findings.push({
         id: 'azure-tenant-no-target',
@@ -65,10 +63,11 @@ async function scanAzureTenant(options = {}) {
         recommendation: 'Use --tenant <id> for full tenant scan',
       });
     }
-
   } catch (error) {
     if (error.code === 'MODULE_NOT_FOUND') {
-      console.error('Azure SDK not installed. Run: npm install @azure/identity @azure/arm-managementgroups @azure/arm-authorization @azure/arm-subscriptions');
+      console.error(
+        'Azure SDK not installed. Run: npm install @azure/identity @azure/arm-managementgroups @azure/arm-authorization @azure/arm-subscriptions'
+      );
     } else if (error.statusCode === 403 || error.code === 'AuthorizationFailed') {
       findings.push({
         id: 'azure-tenant-permission-denied',
@@ -90,26 +89,26 @@ async function scanAzureTenant(options = {}) {
  */
 async function scanManagementGroupIAM(credential, managementGroupId) {
   const findings = [];
-  
+
   try {
     const { AuthorizationManagementClient } = require('@azure/arm-authorization');
-    
+
     // Note: For MG-level role assignments, we need to use REST API or the specific MG scope
     // AuthorizationManagementClient requires a subscription context
     // We'll use fetch for the MG-level API calls
-    
+
     const { ClientSecretCredential, DefaultAzureCredential } = require('@azure/identity');
     const token = await credential.getToken('https://management.azure.com/.default');
-    
+
     const mgScope = `/providers/Microsoft.Management/managementGroups/${managementGroupId}`;
     const url = `https://management.azure.com${mgScope}/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01`;
-    
+
     const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${token.token}`,
+        Authorization: `Bearer ${token.token}`,
       },
     });
-    
+
     if (!response.ok) {
       if (response.status === 403) {
         findings.push({
@@ -123,10 +122,10 @@ async function scanManagementGroupIAM(credential, managementGroupId) {
       }
       throw new Error(`API error: ${response.status}`);
     }
-    
+
     const data = await response.json();
     const assignments = data.value || [];
-    
+
     // Privileged role definition IDs
     const privilegedRoles = {
       '8e3af657-a8ff-443c-a75c-2fe8c4bcb635': 'Owner',
@@ -134,20 +133,20 @@ async function scanManagementGroupIAM(credential, managementGroupId) {
       '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9': 'User Access Administrator',
       'fb1c8493-542b-48eb-b624-b4c8fea62acd': 'Security Admin',
     };
-    
+
     const roleCounts = {};
-    
+
     for (const assignment of assignments) {
       const roleDefId = assignment.properties?.roleDefinitionId?.split('/').pop();
       const roleName = privilegedRoles[roleDefId];
       const principalType = assignment.properties?.principalType;
       const principalId = assignment.properties?.principalId;
-      
+
       // Track role counts
       if (roleName) {
         roleCounts[roleName] = (roleCounts[roleName] || 0) + 1;
       }
-      
+
       // Critical: Owner at MG level
       if (roleName === 'Owner') {
         findings.push({
@@ -159,7 +158,7 @@ async function scanManagementGroupIAM(credential, managementGroupId) {
           details: { principalId, principalType },
         });
       }
-      
+
       // Service Principal with elevated MG permissions
       if (principalType === 'ServicePrincipal' && roleName) {
         findings.push({
@@ -172,7 +171,7 @@ async function scanManagementGroupIAM(credential, managementGroupId) {
         });
       }
     }
-    
+
     // Summary of privileged role counts at MG
     for (const [role, count] of Object.entries(roleCounts)) {
       if (count > 3 && role !== 'Contributor') {
@@ -185,11 +184,10 @@ async function scanManagementGroupIAM(credential, managementGroupId) {
         });
       }
     }
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 
@@ -198,17 +196,17 @@ async function scanManagementGroupIAM(credential, managementGroupId) {
  */
 async function analyzeManagementGroupHierarchy(credential, rootMgId) {
   const findings = [];
-  
+
   try {
     const { ManagementGroupsAPI } = require('@azure/arm-managementgroups');
     const mgClient = new ManagementGroupsAPI(credential);
-    
+
     // Get MG with expanded children
     const mgDetail = await mgClient.managementGroups.get(rootMgId, {
       expand: 'children',
       recurse: true,
     });
-    
+
     // Analyze hierarchy
     const analyzeNode = async (node, depth = 0) => {
       if (depth > 6) {
@@ -221,11 +219,11 @@ async function analyzeManagementGroupHierarchy(credential, rootMgId) {
         });
         return;
       }
-      
+
       const children = node.children || [];
       const subscriptions = children.filter(c => c.type === '/subscriptions');
       const childMGs = children.filter(c => c.type?.includes('managementGroups'));
-      
+
       // Too many direct subscriptions
       if (subscriptions.length > 20) {
         findings.push({
@@ -236,12 +234,12 @@ async function analyzeManagementGroupHierarchy(credential, rootMgId) {
           recommendation: 'Consider organizing into child management groups',
         });
       }
-      
+
       // Check each child MG's role assignments
       for (const childMG of childMGs) {
         const childFindings = await scanManagementGroupIAM(credential, childMG.name);
         findings.push(...childFindings);
-        
+
         // Recurse
         try {
           const childDetail = await mgClient.managementGroups.get(childMG.name, {
@@ -254,13 +252,12 @@ async function analyzeManagementGroupHierarchy(credential, rootMgId) {
         }
       }
     };
-    
+
     await analyzeNode(mgDetail);
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 
@@ -269,28 +266,28 @@ async function analyzeManagementGroupHierarchy(credential, rootMgId) {
  */
 async function scanTenantCustomRoles(credential, managementGroupId) {
   const findings = [];
-  
+
   try {
     const token = await credential.getToken('https://management.azure.com/.default');
-    
+
     // List custom role definitions at MG scope
     const mgScope = `/providers/Microsoft.Management/managementGroups/${managementGroupId}`;
     const url = `https://management.azure.com${mgScope}/providers/Microsoft.Authorization/roleDefinitions?api-version=2022-04-01&$filter=type eq 'CustomRole'`;
-    
+
     const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${token.token}`,
+        Authorization: `Bearer ${token.token}`,
       },
     });
-    
+
     if (!response.ok) {
       if (response.status === 403) return findings;
       throw new Error(`API error: ${response.status}`);
     }
-    
+
     const data = await response.json();
     const roles = data.value || [];
-    
+
     // Dangerous permissions/actions
     const dangerousActions = [
       '*/write',
@@ -301,19 +298,19 @@ async function scanTenantCustomRoles(credential, managementGroupId) {
       'Microsoft.ManagedIdentity/*/write',
       'Microsoft.KeyVault/vaults/secrets/*',
     ];
-    
+
     for (const role of roles) {
       const roleName = role.properties?.roleName;
       const permissions = role.properties?.permissions || [];
-      
+
       for (const perm of permissions) {
         const actions = [...(perm.actions || []), ...(perm.dataActions || [])];
-        
+
         // Check for dangerous actions
-        const dangerous = actions.filter(a => 
+        const dangerous = actions.filter(a =>
           dangerousActions.some(d => a.includes(d.replace('*', '')))
         );
-        
+
         if (dangerous.length > 0) {
           findings.push({
             id: 'azure-tenant-role-dangerous',
@@ -324,9 +321,9 @@ async function scanTenantCustomRoles(credential, managementGroupId) {
             details: { dangerousActions: dangerous.slice(0, 5) },
           });
         }
-        
+
         // Check for wildcard actions at resource provider level
-        const wildcardRPs = actions.filter(a => a.match(/^[^\/]+\/\*$/));
+        const wildcardRPs = actions.filter(a => a.match(/^[^/]+\/\*$/));
         if (wildcardRPs.length > 0) {
           findings.push({
             id: 'azure-tenant-role-wildcard-rp',
@@ -338,7 +335,7 @@ async function scanTenantCustomRoles(credential, managementGroupId) {
         }
       }
     }
-    
+
     // Role count summary
     if (roles.length > 30) {
       findings.push({
@@ -349,11 +346,10 @@ async function scanTenantCustomRoles(credential, managementGroupId) {
         recommendation: 'Review if all tenant-level roles are necessary',
       });
     }
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 
@@ -362,43 +358,45 @@ async function scanTenantCustomRoles(credential, managementGroupId) {
  */
 async function scanAllSubscriptions(credential, managementGroupId) {
   const findings = [];
-  
+
   try {
     const { ManagementGroupsAPI } = require('@azure/arm-managementgroups');
     const { AuthorizationManagementClient } = require('@azure/arm-authorization');
-    
+
     const mgClient = new ManagementGroupsAPI(credential);
-    
+
     // Get all descendants (subscriptions)
     const descendants = [];
-    for await (const desc of mgClient.managementGroupSubscriptions.getSubscriptionsUnderManagementGroup(managementGroupId)) {
+    for await (const desc of mgClient.managementGroupSubscriptions.getSubscriptionsUnderManagementGroup(
+      managementGroupId
+    )) {
       descendants.push(desc);
     }
-    
+
     console.log(`  Found ${descendants.length} subscriptions...`);
-    
+
     // Cross-subscription analysis
     const principalAccess = new Map(); // principalId -> [subscriptions with Owner/Contributor]
-    
+
     for (const sub of descendants) {
       const subscriptionId = sub.id?.split('/').pop();
       if (!subscriptionId) continue;
-      
+
       try {
         const authClient = new AuthorizationManagementClient(credential, subscriptionId);
-        
+
         // Get role assignments
         for await (const assignment of authClient.roleAssignments.listForSubscription()) {
           const roleDefId = assignment.roleDefinitionId?.split('/').pop();
           const principalId = assignment.principalId;
           const principalType = assignment.principalType;
-          
+
           // Track privileged access
           const privilegedRoleIds = [
             '8e3af657-a8ff-443c-a75c-2fe8c4bcb635', // Owner
             'b24988ac-6180-42a0-ab88-20f7382dd24c', // Contributor
           ];
-          
+
           if (privilegedRoleIds.includes(roleDefId)) {
             const key = `${principalType}:${principalId}`;
             if (!principalAccess.has(key)) {
@@ -410,16 +408,15 @@ async function scanAllSubscriptions(credential, managementGroupId) {
             });
           }
         }
-        
       } catch (err) {
         // Skip subscriptions we can't access
       }
     }
-    
+
     // Analyze cross-subscription permissions
     for (const [principal, access] of principalAccess) {
       const [principalType, principalId] = principal.split(':');
-      
+
       if (access.length > 5) {
         findings.push({
           id: 'azure-cross-sub-privileged',
@@ -434,7 +431,7 @@ async function scanAllSubscriptions(credential, managementGroupId) {
           },
         });
       }
-      
+
       // Service Principals with multi-subscription access
       if (principalType === 'ServicePrincipal' && access.length > 3) {
         findings.push({
@@ -446,7 +443,7 @@ async function scanAllSubscriptions(credential, managementGroupId) {
         });
       }
     }
-    
+
     // Subscription count summary
     findings.push({
       id: 'azure-subscription-count',
@@ -455,11 +452,10 @@ async function scanAllSubscriptions(credential, managementGroupId) {
       message: `${descendants.length} subscriptions scanned`,
       recommendation: null,
     });
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 
@@ -468,36 +464,36 @@ async function scanAllSubscriptions(credential, managementGroupId) {
  */
 async function scanAccessibleSubscriptions(credential) {
   const findings = [];
-  
+
   try {
     const { SubscriptionClient } = require('@azure/arm-subscriptions');
     const { AuthorizationManagementClient } = require('@azure/arm-authorization');
-    
+
     const subClient = new SubscriptionClient(credential);
-    
+
     const subscriptions = [];
     for await (const sub of subClient.subscriptions.list()) {
       subscriptions.push(sub);
     }
-    
+
     console.log(`  Found ${subscriptions.length} accessible subscriptions...`);
-    
+
     const principalAccess = new Map();
-    
+
     for (const sub of subscriptions) {
       try {
         const authClient = new AuthorizationManagementClient(credential, sub.subscriptionId);
-        
+
         for await (const assignment of authClient.roleAssignments.listForSubscription()) {
           const roleDefId = assignment.roleDefinitionId?.split('/').pop();
           const principalId = assignment.principalId;
           const principalType = assignment.principalType;
-          
+
           const privilegedRoleIds = [
             '8e3af657-a8ff-443c-a75c-2fe8c4bcb635',
             'b24988ac-6180-42a0-ab88-20f7382dd24c',
           ];
-          
+
           if (privilegedRoleIds.includes(roleDefId)) {
             const key = `${principalType}:${principalId}`;
             if (!principalAccess.has(key)) {
@@ -509,12 +505,11 @@ async function scanAccessibleSubscriptions(credential) {
             });
           }
         }
-        
       } catch (err) {
         // Skip
       }
     }
-    
+
     // Analyze
     for (const [principal, access] of principalAccess) {
       if (access.length > 5) {
@@ -528,7 +523,7 @@ async function scanAccessibleSubscriptions(credential) {
         });
       }
     }
-    
+
     findings.push({
       id: 'azure-subscription-count',
       severity: 'info',
@@ -536,11 +531,10 @@ async function scanAccessibleSubscriptions(credential) {
       message: `${subscriptions.length} subscriptions scanned`,
       recommendation: null,
     });
-    
   } catch (error) {
     if (error.statusCode !== 403) throw error;
   }
-  
+
   return findings;
 }
 
