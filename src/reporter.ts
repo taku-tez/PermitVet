@@ -3,17 +3,21 @@
  */
 
 import * as fs from 'fs';
-import type { Finding, ScanSummary, ReportOptions, SARIFReport } from './types';
+import type { Finding, ScanSummary, ReportOptions } from './types';
+import { generateSARIF } from './compliance';
 
 export interface ReporterOptions {
   quiet?: boolean;
+  version?: string;
 }
 
 export class Reporter {
   private quiet: boolean;
+  private version?: string;
 
   constructor(options: ReporterOptions = {}) {
     this.quiet = options.quiet || false;
+    this.version = options.version;
   }
 
   start(message: string): void {
@@ -45,7 +49,10 @@ export class Reporter {
         console.log(output);
       }
     } else if (options.format === 'sarif') {
-      const sarif = this.toSARIF(findings);
+      if (!this.version) {
+        throw new Error('Reporter requires a version to generate SARIF output.');
+      }
+      const sarif = generateSARIF(findings, { version: this.version });
       const output = JSON.stringify(sarif, null, 2);
       if (options.output) {
         fs.writeFileSync(options.output, output);
@@ -85,41 +92,5 @@ export class Reporter {
     console.log(`   🟡 Warning: ${summary.warning}`);
     console.log(`   🔵 Info: ${summary.info}`);
     console.log('');
-  }
-
-  private toSARIF(findings: Finding[]): SARIFReport {
-    return {
-      $schema:
-        'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
-      version: '2.1.0',
-      runs: [
-        {
-          tool: {
-            driver: {
-              name: 'PermitVet',
-              version: '0.13.0',
-              informationUri: 'https://github.com/taku-tez/PermitVet',
-            },
-          },
-          results: findings.map(f => ({
-            ruleId: f.id,
-            level:
-              f.severity === 'critical'
-                ? ('error' as const)
-                : f.severity === 'warning'
-                  ? ('warning' as const)
-                  : ('note' as const),
-            message: { text: f.message },
-            locations: [
-              {
-                physicalLocation: {
-                  artifactLocation: { uri: f.resource },
-                },
-              },
-            ],
-          })),
-        },
-      ],
-    };
   }
 }
