@@ -4,7 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
-// Utils imported as needed
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 interface AccessAnalyzerClient {
   send: (command: unknown) => Promise<unknown>;
@@ -57,25 +57,26 @@ export async function scanAccessAnalyzer(options: ScanOptions = {}): Promise<Fin
     const client = new AccessAnalyzerClient(config) as any;
 
     // 1. Check for existing analyzers
-    console.log('  Checking IAM Access Analyzer...');
+    logProgress('Checking IAM Access Analyzer...');
     const analyzers = await listAnalyzers(client);
 
     if (analyzers.length === 0) {
-      findings.push({
-        id: 'aws-no-access-analyzer',
-        severity: 'warning',
-        resource: 'Account',
-        message: 'No IAM Access Analyzer configured',
-        recommendation:
+      findings.push(
+        createFinding(
+          'aws-no-access-analyzer',
+          'Account',
+          'No IAM Access Analyzer configured',
+          'warning',
           'Create an Access Analyzer to detect external access and unused permissions',
-        cis: '1.20',
-      });
+          { cis: '1.20' }
+        )
+      );
       return findings;
     }
 
     // 2. Scan findings from each analyzer
     for (const analyzer of analyzers) {
-      console.log(`  Scanning analyzer: ${analyzer.name} (${analyzer.type})...`);
+      logProgress(`Scanning analyzer: ${analyzer.name} (${analyzer.type})...`);
 
       if (analyzer.type === 'ACCOUNT' || analyzer.type === 'ORGANIZATION') {
         // External access findings
@@ -93,19 +94,24 @@ export async function scanAccessAnalyzer(options: ScanOptions = {}): Promise<Fin
       }
     }
   } catch (error) {
-    const err = error as Error & { code?: string; name?: string };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('AWS SDK not installed. Run: npm install @aws-sdk/client-accessanalyzer');
-    } else if (err.name === 'AccessDeniedException') {
-      findings.push({
-        id: 'aws-access-analyzer-denied',
-        severity: 'info',
-        resource: 'Account',
-        message: 'Unable to access IAM Access Analyzer',
-        recommendation: 'Ensure scanner has access-analyzer:* permissions',
-      });
+    const result = handleScanError(error, { provider: 'aws', operation: 'access analyzer' });
+    if (result.type === 'sdk_not_installed') {
+      logError(result.message);
     } else {
-      throw error;
+      const err = error as Error & { name?: string };
+      if (err.name === 'AccessDeniedException') {
+        findings.push(
+          createFinding(
+            'aws-access-analyzer-denied',
+            'Account',
+            'Unable to access IAM Access Analyzer',
+            'info',
+            'Ensure scanner has access-analyzer:* permissions'
+          )
+        );
+      } else if (result.shouldThrow) {
+        throw error;
+      }
     }
   }
 
@@ -177,20 +183,24 @@ async function scanExternalAccess(
 
         const severity = mapAccessAnalyzerSeverity(finding);
 
-        findings.push({
-          id: `aws-external-access-${finding.resourceType?.toLowerCase().replace(/::/g, '-')}`,
-          severity,
-          resource: finding.resource,
-          message: `${finding.resourceType} allows external access: ${finding.principal?.AWS || finding.principal?.Federated || 'Unknown'}`,
-          recommendation: `Review ${finding.resourceType} policy. Condition: ${JSON.stringify(finding.condition || {})}`,
-          details: {
-            resourceType: finding.resourceType,
-            principal: finding.principal,
-            action: finding.action,
-            condition: finding.condition,
-            isPublic: finding.isPublic,
-          },
-        });
+        findings.push(
+          createFinding(
+            `aws-external-access-${finding.resourceType?.toLowerCase().replace(/::/g, '-')}`,
+            finding.resource,
+            `${finding.resourceType} allows external access: ${finding.principal?.AWS || finding.principal?.Federated || 'Unknown'}`,
+            severity,
+            `Review ${finding.resourceType} policy. Condition: ${JSON.stringify(finding.condition || {})}`,
+            {
+              details: {
+                resourceType: finding.resourceType,
+                principal: finding.principal,
+                action: finding.action,
+                condition: finding.condition,
+                isPublic: finding.isPublic,
+              },
+            }
+          )
+        );
       }
 
       nextToken = response.nextToken;
@@ -233,62 +243,73 @@ async function scanUnusedAccess(
 
         switch (findingType) {
           case 'UnusedIAMRole':
-            findings.push({
-              id: 'aws-unused-role',
-              severity: 'warning',
-              resource: finding.resource,
-              message: `IAM Role has not been used in ${finding.unusedAccess?.lastAccessed ? 'over ' + finding.unusedAccess.lastAccessed : 'a long time'}`,
-              recommendation:
+            findings.push(
+              createFinding(
+                'aws-unused-role',
+                finding.resource,
+                `IAM Role has not been used in ${finding.unusedAccess?.lastAccessed ? 'over ' + finding.unusedAccess.lastAccessed : 'a long time'}`,
+                'warning',
                 'Review if this role is still needed. Consider deleting unused roles.',
-              details: finding.unusedAccess,
-            });
+                { details: finding.unusedAccess }
+              )
+            );
             break;
 
           case 'UnusedIAMUserAccessKey':
-            findings.push({
-              id: 'aws-unused-access-key',
-              severity: 'warning',
-              resource: finding.resource,
-              message: 'Access key has not been used',
-              recommendation: 'Delete unused access keys to reduce attack surface.',
-              details: finding.unusedAccess,
-            });
+            findings.push(
+              createFinding(
+                'aws-unused-access-key',
+                finding.resource,
+                'Access key has not been used',
+                'warning',
+                'Delete unused access keys to reduce attack surface.',
+                { details: finding.unusedAccess }
+              )
+            );
             break;
 
           case 'UnusedIAMUserPassword':
-            findings.push({
-              id: 'aws-unused-password',
-              severity: 'info',
-              resource: finding.resource,
-              message: 'Console password has not been used',
-              recommendation: 'Consider disabling console access if not needed.',
-              details: finding.unusedAccess,
-            });
+            findings.push(
+              createFinding(
+                'aws-unused-password',
+                finding.resource,
+                'Console password has not been used',
+                'info',
+                'Consider disabling console access if not needed.',
+                { details: finding.unusedAccess }
+              )
+            );
             break;
 
           case 'UnusedPermission':
-            findings.push({
-              id: 'aws-unused-permission',
-              severity: 'info',
-              resource: finding.resource,
-              message: `Unused permissions detected: ${finding.unusedAccess?.unusedServices?.length || 0} unused services`,
-              recommendation: 'Review and remove unused permissions to enforce least privilege.',
-              details: {
-                unusedServices: finding.unusedAccess?.unusedServices,
-                unusedActions: finding.unusedAccess?.unusedActions,
-              },
-            });
+            findings.push(
+              createFinding(
+                'aws-unused-permission',
+                finding.resource,
+                `Unused permissions detected: ${finding.unusedAccess?.unusedServices?.length || 0} unused services`,
+                'info',
+                'Review and remove unused permissions to enforce least privilege.',
+                {
+                  details: {
+                    unusedServices: finding.unusedAccess?.unusedServices,
+                    unusedActions: finding.unusedAccess?.unusedActions,
+                  },
+                }
+              )
+            );
             break;
 
           default:
-            findings.push({
-              id: `aws-unused-${findingType?.toLowerCase() || 'unknown'}`,
-              severity: 'info',
-              resource: finding.resource,
-              message: `Unused access detected: ${findingType}`,
-              recommendation: 'Review and remediate unused access.',
-              details: finding.unusedAccess,
-            });
+            findings.push(
+              createFinding(
+                `aws-unused-${findingType?.toLowerCase() || 'unknown'}`,
+                finding.resource,
+                `Unused access detected: ${findingType}`,
+                'info',
+                'Review and remediate unused access.',
+                { details: finding.unusedAccess }
+              )
+            );
         }
       }
 

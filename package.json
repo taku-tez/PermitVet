@@ -16,7 +16,7 @@
     "postinstall": "npm run build || true",
     "format": "prettier --write \"src/**/*.{js,ts}\" \"bin/**/*.js\" \"test/**/*.js\"",
     "lint:fix": "eslint --fix src/ bin/ test/",
-    "build": "tsc",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' tsc",
     "type-check": "tsc --noEmit",
     "prepublishOnly": "npm run build",
     "pretest": "npm run build"

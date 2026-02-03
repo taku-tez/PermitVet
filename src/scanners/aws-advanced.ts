@@ -5,7 +5,7 @@
  */
 
 import type { Finding, ScanOptions } from '../types';
-// Utils imported as needed
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 interface SCPStatement {
   Effect: 'Allow' | 'Deny';
@@ -58,40 +58,45 @@ export async function scanAWSAdvanced(options: ScanOptions = {}): Promise<Findin
     const orgClient = new OrganizationsClient(config) as any;
 
     // 1. Organizations SCP Analysis
-    console.log('  Analyzing Organizations SCPs...');
+    logProgress('Analyzing Organizations SCPs...');
     const scpFindings = await analyzeOrganizationsSCPs(orgClient);
     findings.push(...scpFindings);
 
     // 2. Permission Boundaries Analysis
-    console.log('  Analyzing Permission Boundaries...');
+    logProgress('Analyzing Permission Boundaries...');
     const boundaryFindings = await analyzePermissionBoundaries(iamClient);
     findings.push(...boundaryFindings);
 
     // 3. Cross-Account Role Analysis
-    console.log('  Analyzing cross-account roles...');
+    logProgress('Analyzing cross-account roles...');
     const crossAccountFindings = await analyzeCrossAccountRoles(iamClient);
     findings.push(...crossAccountFindings);
 
     // 4. Effective Permissions Analysis
-    console.log('  Analyzing effective permissions...');
+    logProgress('Analyzing effective permissions...');
     const effectiveFindings = await analyzeEffectivePermissions(iamClient);
     findings.push(...effectiveFindings);
   } catch (error) {
-    const err = error as Error & { code?: string; name?: string };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('AWS SDK not installed.');
-    } else if (err.name === 'AWSOrganizationsNotInUseException') {
-      // Not using Organizations - skip
-    } else if (err.name === 'AccessDeniedException') {
-      findings.push({
-        id: 'aws-advanced-permission-denied',
-        severity: 'info',
-        resource: 'Account',
-        message: 'Unable to access advanced IAM features',
-        recommendation: 'Ensure scanner has organizations:* and iam:* permissions',
-      });
+    const result = handleScanError(error, { provider: 'aws', operation: 'advanced scan' });
+    if (result.type === 'sdk_not_installed') {
+      logError(result.message);
     } else {
-      throw error;
+      const err = error as Error & { name?: string };
+      if (err.name === 'AWSOrganizationsNotInUseException') {
+        // Not using Organizations - skip
+      } else if (err.name === 'AccessDeniedException') {
+        findings.push(
+          createFinding(
+            'aws-advanced-permission-denied',
+            'Account',
+            'Unable to access advanced IAM features',
+            'info',
+            'Ensure scanner has organizations:* and iam:* permissions'
+          )
+        );
+      } else if (result.shouldThrow) {
+        throw error;
+      }
     }
   }
 
@@ -118,13 +123,15 @@ async function analyzeOrganizationsSCPs(orgClient: OrganizationsClient): Promise
     const policies = policiesResponse.Policies || [];
 
     if (policies.length === 0) {
-      findings.push({
-        id: 'aws-no-scps',
-        severity: 'info',
-        resource: 'Organizations',
-        message: 'No Service Control Policies configured',
-        recommendation: 'Consider using SCPs to enforce guardrails across accounts',
-      });
+      findings.push(
+        createFinding(
+          'aws-no-scps',
+          'Organizations',
+          'No Service Control Policies configured',
+          'info',
+          'Consider using SCPs to enforce guardrails across accounts'
+        )
+      );
       return findings;
     }
 
@@ -149,13 +156,15 @@ async function analyzeOrganizationsSCPs(orgClient: OrganizationsClient): Promise
             : [statement.Resource];
 
           if (actions.includes('*') && resources.includes('*')) {
-            findings.push({
-              id: 'aws-scp-too-permissive',
-              severity: 'warning',
-              resource: `SCP/${policy.Name}`,
-              message: 'SCP allows all actions on all resources',
-              recommendation: 'SCPs should deny dangerous actions, not allow everything',
-            });
+            findings.push(
+              createFinding(
+                'aws-scp-too-permissive',
+                `SCP/${policy.Name}`,
+                'SCP allows all actions on all resources',
+                'warning',
+                'SCPs should deny dangerous actions, not allow everything'
+              )
+            );
           }
         }
 
@@ -205,13 +214,15 @@ async function analyzeOrganizationsSCPs(orgClient: OrganizationsClient): Promise
 
     for (const check of criticalDenyPatterns) {
       if (!combinedContent.includes(check.pattern)) {
-        findings.push({
-          id: check.id,
-          severity: 'info',
-          resource: 'Organizations/SCP',
-          message: check.msg,
-          recommendation: `Add SCP to deny ${check.pattern}`,
-        });
+        findings.push(
+          createFinding(
+            check.id,
+            'Organizations/SCP',
+            check.msg,
+            'info',
+            `Add SCP to deny ${check.pattern}`
+          )
+        );
       }
     }
   } catch (error) {
@@ -252,13 +263,15 @@ async function analyzePermissionBoundaries(iamClient: IAMClient): Promise<Findin
     const totalUsers = usersResponse.Users?.length || 0;
     if (usersWithoutBoundary > 0 && totalUsers > 5) {
       const percentage = Math.round((usersWithoutBoundary / totalUsers) * 100);
-      findings.push({
-        id: 'aws-users-without-boundary',
-        severity: percentage > 50 ? 'warning' : 'info',
-        resource: 'IAM/Users',
-        message: `${usersWithoutBoundary}/${totalUsers} users (${percentage}%) have no permission boundary`,
-        recommendation: 'Use permission boundaries to limit maximum permissions for IAM entities',
-      });
+      findings.push(
+        createFinding(
+          'aws-users-without-boundary',
+          'IAM/Users',
+          `${usersWithoutBoundary}/${totalUsers} users (${percentage}%) have no permission boundary`,
+          percentage > 50 ? 'warning' : 'info',
+          'Use permission boundaries to limit maximum permissions for IAM entities'
+        )
+      );
     }
 
     // Check roles created by users (should have boundaries)
@@ -286,13 +299,15 @@ async function analyzePermissionBoundaries(iamClient: IAMClient): Promise<Findin
     }
 
     if (customRolesWithoutBoundary > 5) {
-      findings.push({
-        id: 'aws-roles-without-boundary',
-        severity: 'info',
-        resource: 'IAM/Roles',
-        message: `${customRolesWithoutBoundary} custom roles have no permission boundary`,
-        recommendation: 'Consider using permission boundaries for delegated role creation',
-      });
+      findings.push(
+        createFinding(
+          'aws-roles-without-boundary',
+          'IAM/Roles',
+          `${customRolesWithoutBoundary} custom roles have no permission boundary`,
+          'info',
+          'Consider using permission boundaries for delegated role creation'
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { name?: string };
@@ -350,25 +365,29 @@ async function analyzeCrossAccountRoles(iamClient: IAMClient): Promise<Finding[]
                 statement.Condition?.StringLike?.['sts:ExternalId'];
 
               if (!hasExternalId && !principal.includes(':role/')) {
-                findings.push({
-                  id: 'aws-cross-account-no-external-id',
-                  severity: 'warning',
-                  resource: `Role/${role.RoleName}`,
-                  message: `Cross-account trust to ${accountMatch[1]} without ExternalId`,
-                  recommendation: 'Use ExternalId condition to prevent confused deputy attacks',
-                });
+                findings.push(
+                  createFinding(
+                    'aws-cross-account-no-external-id',
+                    `Role/${role.RoleName}`,
+                    `Cross-account trust to ${accountMatch[1]} without ExternalId`,
+                    'warning',
+                    'Use ExternalId condition to prevent confused deputy attacks'
+                  )
+                );
               }
             }
 
             // Check for :root principal (overly permissive)
             if (principal.includes(':root')) {
-              findings.push({
-                id: 'aws-cross-account-root-trust',
-                severity: 'warning',
-                resource: `Role/${role.RoleName}`,
-                message: 'Trust policy allows entire account (root), not specific role/user',
-                recommendation: 'Restrict trust to specific IAM principals, not account root',
-              });
+              findings.push(
+                createFinding(
+                  'aws-cross-account-root-trust',
+                  `Role/${role.RoleName}`,
+                  'Trust policy allows entire account (root), not specific role/user',
+                  'warning',
+                  'Restrict trust to specific IAM principals, not account root'
+                )
+              );
             }
           }
         }
@@ -379,13 +398,15 @@ async function analyzeCrossAccountRoles(iamClient: IAMClient): Promise<Finding[]
 
     // Summary finding for many cross-account relationships
     if (externalAccounts.size > 10) {
-      findings.push({
-        id: 'aws-many-cross-account-trusts',
-        severity: 'info',
-        resource: 'IAM',
-        message: `Multiple roles trust ${externalAccounts.size} external accounts`,
-        recommendation: 'Regularly review cross-account trust relationships',
-      });
+      findings.push(
+        createFinding(
+          'aws-many-cross-account-trusts',
+          'IAM',
+          `Multiple roles trust ${externalAccounts.size} external accounts`,
+          'info',
+          'Regularly review cross-account trust relationships'
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { name?: string };
@@ -443,16 +464,20 @@ async function analyzeEffectivePermissions(iamClient: IAMClient): Promise<Findin
           simResult.EvaluationResults?.filter(r => r.EvalDecision === 'allowed') || [];
 
         if (allowedCriticalActions.length > 5) {
-          findings.push({
-            id: 'aws-user-many-critical-permissions',
-            severity: 'warning',
-            resource: `User/${user.UserName}`,
-            message: `User has ${allowedCriticalActions.length} critical permissions allowed`,
-            recommendation: 'Review if all these permissions are necessary',
-            details: {
-              allowedActions: allowedCriticalActions.map(a => a.EvalActionName),
-            },
-          });
+          findings.push(
+            createFinding(
+              'aws-user-many-critical-permissions',
+              `User/${user.UserName}`,
+              `User has ${allowedCriticalActions.length} critical permissions allowed`,
+              'warning',
+              'Review if all these permissions are necessary',
+              {
+                details: {
+                  allowedActions: allowedCriticalActions.map(a => a.EvalActionName),
+                },
+              }
+            )
+          );
         }
 
         // Check for dangerous combinations
@@ -464,13 +489,15 @@ async function analyzeEffectivePermissions(iamClient: IAMClient): Promise<Findin
         );
 
         if (canCreateUsers && canAttachPolicies) {
-          findings.push({
-            id: 'aws-user-privesc-risk',
-            severity: 'critical',
-            resource: `User/${user.UserName}`,
-            message: 'User can create users AND attach policies (privilege escalation risk)',
-            recommendation: 'This combination allows creating admin users - review immediately',
-          });
+          findings.push(
+            createFinding(
+              'aws-user-privesc-risk',
+              `User/${user.UserName}`,
+              'User can create users AND attach policies (privilege escalation risk)',
+              'critical',
+              'This combination allows creating admin users - review immediately'
+            )
+          );
         }
       } catch {
         // Simulation might fail for some users

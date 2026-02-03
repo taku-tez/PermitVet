@@ -5,6 +5,7 @@
  */
 
 import type { ScanOptions } from '../types';
+import { logProgress, logError } from '../utils';
 
 /** JIT/Temporary access recommendation */
 export interface JITRecommendation {
@@ -149,14 +150,14 @@ export async function analyzeAWSRBAC(options: RBACOptions = {}): Promise<RBACAna
     const config = options.profile ? { profile: options.profile } : {};
     const iamClient = new IAMClient(config);
 
-    console.log('  Analyzing AWS RBAC configuration...');
+    logProgress('Analyzing AWS RBAC configuration...');
 
     // 1. List all roles
     const rolesResponse = await iamClient.send(new ListRolesCommand({}));
     const roles = rolesResponse.Roles || [];
     results.summary.totalRoles = roles.length;
 
-    console.log(`  Found ${roles.length} roles...`);
+    logProgress(`Found ${roles.length} roles...`);
 
     for (const role of roles) {
       // Skip AWS service-linked roles
@@ -381,7 +382,7 @@ export async function analyzeAWSRBAC(options: RBACOptions = {}): Promise<RBACAna
   } catch (error) {
     const err = error as Error & { code?: string };
     if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('AWS SDK not installed.');
+      logError('AWS SDK not installed. Run: npm install @aws-sdk/client-iam');
     } else {
       throw error;
     }
@@ -415,13 +416,13 @@ export async function analyzeAzureRBAC(options: RBACOptions = {}): Promise<RBACA
     const subscriptionId = options.subscription || process.env.AZURE_SUBSCRIPTION_ID;
 
     if (!subscriptionId) {
-      console.error('No Azure subscription specified.');
+      logError('No Azure subscription specified.');
       return results;
     }
 
     const authClient = new AuthorizationManagementClient(credential, subscriptionId);
 
-    console.log('  Analyzing Azure RBAC configuration...');
+    logProgress('Analyzing Azure RBAC configuration...');
 
     // List role assignments
     interface RoleAssignment {
@@ -438,7 +439,7 @@ export async function analyzeAzureRBAC(options: RBACOptions = {}): Promise<RBACA
     }
 
     results.summary.totalRoles = assignments.length;
-    console.log(`  Found ${assignments.length} role assignments...`);
+    logProgress(`Found ${assignments.length} role assignments...`);
 
     // Privileged role IDs
     const privilegedRoles: Record<string, string> = {
@@ -491,7 +492,9 @@ export async function analyzeAzureRBAC(options: RBACOptions = {}): Promise<RBACA
   } catch (error) {
     const err = error as Error & { code?: string; statusCode?: number };
     if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('Azure SDK not installed.');
+      logError(
+        'Azure SDK not installed. Run: npm install @azure/identity @azure/arm-authorization'
+      );
     } else if (err.statusCode !== 403) {
       throw error;
     }
@@ -528,7 +531,7 @@ export async function analyzeGCPRBAC(options: RBACOptions = {}): Promise<RBACAna
       options.project || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
 
     if (!projectId) {
-      console.error('No GCP project specified.');
+      logError('No GCP project specified.');
       return results;
     }
 
@@ -536,7 +539,7 @@ export async function analyzeGCPRBAC(options: RBACOptions = {}): Promise<RBACAna
     const iam = google.iam({ version: 'v1', auth });
     const cloudresourcemanager = google.cloudresourcemanager({ version: 'v1', auth });
 
-    console.log('  Analyzing GCP RBAC configuration...');
+    logProgress('Analyzing GCP RBAC configuration...');
 
     // Get IAM policy
     const policyResponse = await cloudresourcemanager.projects.getIamPolicy({
@@ -552,7 +555,7 @@ export async function analyzeGCPRBAC(options: RBACOptions = {}): Promise<RBACAna
     const policy = policyResponse.data as { bindings?: IAMBinding[] };
     results.summary.totalRoles = policy.bindings?.length || 0;
 
-    console.log(`  Found ${results.summary.totalRoles} role bindings...`);
+    logProgress(`Found ${results.summary.totalRoles} role bindings...`);
 
     // Get IAM recommendations
     try {
@@ -623,7 +626,7 @@ export async function analyzeGCPRBAC(options: RBACOptions = {}): Promise<RBACAna
       }
     } catch {
       // IAM Recommender may not be available
-      console.log('  IAM Recommender not available or no recommendations.');
+      logProgress('IAM Recommender not available or no recommendations.');
     }
 
     // Check for primitive roles that should use JIT
@@ -689,7 +692,7 @@ export async function analyzeGCPRBAC(options: RBACOptions = {}): Promise<RBACAna
   } catch (error) {
     const err = error as Error & { code?: string | number };
     if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('GCP SDK not installed.');
+      logError('GCP SDK not installed. Run: npm install googleapis');
     } else if (err.code !== 403) {
       throw error;
     }

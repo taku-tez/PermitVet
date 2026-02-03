@@ -50,7 +50,7 @@ git checkout -b fix/your-bug-fix
 ### 3. Test Your Changes
 
 ```bash
-# Run all tests
+# Run all tests (automatically builds before testing)
 npm test
 
 # Run specific test file
@@ -59,6 +59,10 @@ npm test -- --test-name-pattern="AWS"
 # Test against real AWS (requires credentials)
 npm run test:aws
 ```
+
+> **Note:** `npm test` automatically runs `npm run build` via the `pretest` hook.
+> The build requires ~4GB heap due to TypeScript compilation of large cloud SDK types.
+> This is handled automatically via `NODE_OPTIONS` in the build script.
 
 ### 4. Commit Your Changes
 
@@ -71,6 +75,7 @@ git commit -m "docs: update architecture documentation"
 ```
 
 Types:
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation only
@@ -96,11 +101,11 @@ Then create a Pull Request on GitHub.
 
 async function scanNewProvider(options = {}) {
   const findings = [];
-  
+
   // Initialize client
   // Fetch resources
   // Analyze for issues
-  
+
   return findings;
 }
 
@@ -129,6 +134,7 @@ case 'newprovider':
 ### 4. Add Documentation
 
 Create `docs/scanners/newprovider.md` with:
+
 - Required permissions
 - Supported checks
 - Usage examples
