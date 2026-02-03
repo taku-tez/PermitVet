@@ -200,7 +200,7 @@ export async function analyzeAWSRBAC(options: RBACOptions = {}): Promise<RBACAna
           roleAnalysis.utilizationLevel = 'never_used';
           results.summary.underutilizedRoles++;
         }
-      } catch (_err) {
+      } catch {
         // Skip if unable to get role details
       }
 
@@ -283,7 +283,7 @@ export async function analyzeAWSRBAC(options: RBACOptions = {}): Promise<RBACAna
                 }
               }
             }
-          } catch (_err) {
+          } catch {
             // Skip if unable to get policy details
           }
         }
@@ -321,11 +321,11 @@ export async function analyzeAWSRBAC(options: RBACOptions = {}): Promise<RBACAna
                 results.summary.unusedPermissionCount++;
               }
             }
-          } catch (_err) {
+          } catch {
             // Skip
           }
         }
-      } catch (_err) {
+      } catch {
         // Skip if unable to analyze policies
       }
 
@@ -621,7 +621,7 @@ export async function analyzeGCPRBAC(options: RBACOptions = {}): Promise<RBACAna
           });
         }
       }
-    } catch (_err) {
+    } catch {
       // IAM Recommender may not be available
       console.log('  IAM Recommender not available or no recommendations.');
     }

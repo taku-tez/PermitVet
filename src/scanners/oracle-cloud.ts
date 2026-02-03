@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 interface OCIUser {
   id: string;
@@ -66,9 +67,7 @@ interface IdentityClient {
   }) => Promise<{ items?: OCIIdentityProvider[] }>;
 }
 
-interface AuthProvider {
-  getTenantId: () => string;
-}
+// AuthProvider interface removed - using dynamic import
 
 interface DangerousPattern {
   pattern: RegExp;
@@ -104,50 +103,52 @@ export async function scanOCI(options: ScanOptions = {}): Promise<Finding[]> {
 
     // Get tenancy info
     const tenancyId = provider.getTenantId();
-    console.log(`  Scanning OCI tenancy: ${tenancyId}...`);
+    logProgress(`Scanning OCI tenancy: ${tenancyId}...`);
 
     // 1. Scan Users
-    console.log('  Scanning users...');
+    logProgress('Scanning users...');
     const userFindings = await scanUsers(identityClient, tenancyId);
     findings.push(...userFindings);
 
     // 2. Scan Groups
-    console.log('  Scanning groups...');
+    logProgress('Scanning groups...');
     const groupFindings = await scanGroups(identityClient, tenancyId);
     findings.push(...groupFindings);
 
     // 3. Scan Policies
-    console.log('  Scanning policies...');
+    logProgress('Scanning policies...');
     const policyFindings = await scanPolicies(identityClient, tenancyId);
     findings.push(...policyFindings);
 
     // 4. Scan Compartments
-    console.log('  Scanning compartments...');
+    logProgress('Scanning compartments...');
     const compartmentFindings = await scanCompartments(identityClient, tenancyId);
     findings.push(...compartmentFindings);
 
     // 5. Scan API Keys and Auth Tokens
-    console.log('  Scanning API keys...');
+    logProgress('Scanning API keys...');
     const keyFindings = await scanAPIKeys(identityClient, tenancyId);
     findings.push(...keyFindings);
 
     // 6. Scan Identity Domains (if available)
-    console.log('  Scanning identity domains...');
+    logProgress('Scanning identity domains...');
     const domainFindings = await scanIdentityDomains(identityClient, tenancyId);
     findings.push(...domainFindings);
   } catch (error) {
-    const err = error as Error & { code?: string; statusCode?: number };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('OCI SDK not installed. Run: npm install oci-sdk');
-    } else if (err.statusCode === 401 || err.statusCode === 403) {
-      findings.push({
-        id: 'oci-auth-failed',
-        severity: 'info',
-        resource: 'OCI',
-        message: 'OCI authentication failed',
-        recommendation: 'Configure ~/.oci/config with valid credentials',
-      });
-    } else {
+    const result = handleScanError(error, { provider: 'oci', operation: 'tenancy scan' });
+    if (result.type === 'sdk_not_installed') {
+      logError(result.message);
+    } else if (result.type === 'auth_failed') {
+      findings.push(
+        createFinding(
+          'oci-auth-failed',
+          'OCI',
+          'OCI authentication failed',
+          'info',
+          'Configure ~/.oci/config with valid credentials'
+        )
+      );
+    } else if (result.shouldThrow) {
       throw error;
     }
   }

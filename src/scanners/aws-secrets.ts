@@ -3,7 +3,7 @@
  * Secrets Manager, KMS, Lambda environment variables, Parameter Store
  */
 
-import type { Finding, ScanOptions, Severity } from '../types';
+import type { Finding, ScanOptions } from '../types';
 
 interface Secret {
   Name: string;
@@ -148,20 +148,18 @@ async function scanSecretsManager(config: { profile?: string }): Promise<Finding
           recommendation: 'Enable automatic rotation for secrets',
           cis: '2.4',
         });
-      } else {
+      } else if (
         // Check rotation frequency
-        if (
-          secret.RotationRules?.AutomaticallyAfterDays &&
-          secret.RotationRules.AutomaticallyAfterDays > 90
-        ) {
-          findings.push({
-            id: 'aws-secret-long-rotation',
-            severity: 'info',
-            resource: `Secret/${secret.Name}`,
-            message: `Secret rotates every ${secret.RotationRules.AutomaticallyAfterDays} days`,
-            recommendation: 'Consider rotating secrets more frequently (30-90 days)',
-          });
-        }
+        secret.RotationRules?.AutomaticallyAfterDays &&
+        secret.RotationRules.AutomaticallyAfterDays > 90
+      ) {
+        findings.push({
+          id: 'aws-secret-long-rotation',
+          severity: 'info',
+          resource: `Secret/${secret.Name}`,
+          message: `Secret rotates every ${secret.RotationRules.AutomaticallyAfterDays} days`,
+          recommendation: 'Consider rotating secrets more frequently (30-90 days)',
+        });
       }
 
       // Check for KMS encryption

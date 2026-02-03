@@ -3,7 +3,7 @@
  * Tenant-wide IAM analysis, Management Group hierarchy, cross-subscription permissions
  */
 
-import type { Finding, ScanOptions, Severity } from '../types';
+import type { Finding, ScanOptions } from '../types';
 
 // Azure SDK types
 interface ManagementGroup {

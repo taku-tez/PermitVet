@@ -1,7 +1,7 @@
 /**
  * Scanner unit tests with mocks
  */
-const { describe, it, mock } = require('node:test');
+const { describe, it } = require('node:test');
 const assert = require('node:assert');
 
 describe('Scanner Modules', () => {

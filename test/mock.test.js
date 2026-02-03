@@ -2,31 +2,12 @@
  * Mock-based integration tests
  * Tests scanners with mocked cloud API responses
  */
-const { describe, it, mock, beforeEach, afterEach } = require('node:test');
+const { describe, it } = require('node:test');
 const assert = require('node:assert');
 
 describe('AWS Scanner with Mocks', () => {
   it('detects user without MFA', async () => {
-    // Mock AWS SDK
-    const mockIAM = {
-      listUsers: async () => ({
-        Users: [{ UserName: 'admin', UserId: 'AIDA123', CreateDate: new Date() }],
-      }),
-      listMFADevices: async () => ({
-        MFADevices: [], // No MFA
-      }),
-      listAccessKeys: async () => ({
-        AccessKeyMetadata: [],
-      }),
-      getLoginProfile: async () => ({
-        LoginProfile: { UserName: 'admin' },
-      }),
-      listUserPolicies: async () => ({ PolicyNames: [] }),
-      listAttachedUserPolicies: async () => ({ AttachedPolicies: [] }),
-      listGroupsForUser: async () => ({ Groups: [] }),
-    };
-
-    // Simulate finding detection
+    // Simulate finding detection (mock setup removed - not currently used)
     const hasConsoleAccess = true; // Has login profile
     const hasMFA = false; // No MFA devices
 
@@ -232,10 +213,7 @@ describe('GCP Scanner with Mocks', () => {
 });
 
 describe('Privilege Escalation Detection', () => {
-  const {
-    detectPrivescPaths,
-    AWS_PRIVESC_TECHNIQUES,
-  } = require('../dist/scanners/privesc-detector.js');
+  const { detectPrivescPaths } = require('../dist/scanners/privesc-detector.js');
 
   it('detects CreatePolicyVersion privesc', () => {
     const permissions = ['iam:CreatePolicyVersion'];

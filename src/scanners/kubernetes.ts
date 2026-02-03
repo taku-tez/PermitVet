@@ -5,6 +5,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 interface RBACRule {
   verbs?: string[];
@@ -69,13 +70,7 @@ interface CoreApi {
   listServiceAccountForAllNamespaces: () => Promise<{ body: { items?: ServiceAccount[] } }>;
 }
 
-interface KubeConfig {
-  loadFromFile: (path: string) => void;
-  loadFromDefault: () => void;
-  setCurrentContext: (context: string) => void;
-  getCurrentContext: () => string;
-  makeApiClient: <T>(api: unknown) => T;
-}
+// KubeConfig interface removed - using dynamic import
 
 /**
  * Scan Kubernetes RBAC for security issues
@@ -103,46 +98,51 @@ export async function scanKubernetesRBAC(options: ScanOptions = {}): Promise<Fin
     const coreApi = kc.makeApiClient(k8s.CoreV1Api) as unknown as CoreApi;
 
     const context = kc.getCurrentContext();
-    console.log(`  Scanning Kubernetes cluster: ${context}...`);
+    logProgress(`Scanning Kubernetes cluster: ${context}...`);
 
     // 1. Scan ClusterRoles
-    console.log('  Scanning ClusterRoles...');
+    logProgress('Scanning ClusterRoles...');
     const clusterRoleFindings = await scanClusterRoles(rbacApi);
     findings.push(...clusterRoleFindings);
 
     // 2. Scan ClusterRoleBindings
-    console.log('  Scanning ClusterRoleBindings...');
+    logProgress('Scanning ClusterRoleBindings...');
     const crbFindings = await scanClusterRoleBindings(rbacApi);
     findings.push(...crbFindings);
 
     // 3. Scan Roles and RoleBindings per namespace
-    console.log('  Scanning namespaced Roles and RoleBindings...');
+    logProgress('Scanning namespaced Roles and RoleBindings...');
     const namespacedFindings = await scanNamespacedRBAC(rbacApi, coreApi);
     findings.push(...namespacedFindings);
 
     // 4. Scan ServiceAccounts
-    console.log('  Scanning ServiceAccounts...');
+    logProgress('Scanning ServiceAccounts...');
     const saFindings = await scanServiceAccounts(coreApi, rbacApi);
     findings.push(...saFindings);
 
     // 5. Check for dangerous default configurations
-    console.log('  Checking default configurations...');
+    logProgress('Checking default configurations...');
     const defaultFindings = await checkDefaultConfigs(rbacApi);
     findings.push(...defaultFindings);
   } catch (error) {
-    const err = error as Error & { code?: string; statusCode?: number };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('Kubernetes client not installed. Run: npm install @kubernetes/client-node');
-    } else if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
-      findings.push({
-        id: 'k8s-connection-failed',
-        severity: 'info',
-        resource: 'Kubernetes',
-        message: 'Unable to connect to Kubernetes cluster',
-        recommendation: 'Ensure kubectl is configured and cluster is accessible',
-      });
+    const result = handleScanError(error, { provider: 'kubernetes', operation: 'cluster scan' });
+    if (result.type === 'sdk_not_installed') {
+      logError(result.message);
     } else {
-      throw error;
+      const err = error as Error & { code?: string };
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+        findings.push(
+          createFinding(
+            'k8s-connection-failed',
+            'Kubernetes',
+            'Unable to connect to Kubernetes cluster',
+            'info',
+            'Ensure kubectl is configured and cluster is accessible'
+          )
+        );
+      } else if (result.shouldThrow) {
+        throw error;
+      }
     }
   }
 
@@ -236,18 +236,22 @@ async function scanClusterRoles(rbacApi: RBACApi): Promise<Finding[]> {
           );
 
           if (hasVerb && hasResource) {
-            findings.push({
-              id: `k8s-clusterrole-${dangerous.severity}`,
-              severity: dangerous.severity,
-              resource: `ClusterRole/${role.metadata?.name}`,
-              message: dangerous.msg,
-              recommendation: 'Review if these permissions are necessary. Follow least privilege.',
-              details: {
-                verbs,
-                resources,
-                apiGroups,
-              },
-            });
+            findings.push(
+              createFinding(
+                `k8s-clusterrole-${dangerous.severity}`,
+                `ClusterRole/${role.metadata?.name}`,
+                dangerous.msg,
+                dangerous.severity,
+                'Review if these permissions are necessary. Follow least privilege.',
+                {
+                  details: {
+                    verbs,
+                    resources,
+                    apiGroups,
+                  },
+                }
+              )
+            );
             break; // One finding per rule
           }
         }
@@ -285,35 +289,41 @@ async function scanClusterRoleBindings(rbacApi: RBACApi): Promise<Finding[]> {
         for (const subject of subjects) {
           // Binding to 'system:anonymous' or 'system:unauthenticated'
           if (subject.name === 'system:anonymous' || subject.name === 'system:unauthenticated') {
-            findings.push({
-              id: 'k8s-anonymous-cluster-admin',
-              severity: 'critical',
-              resource: `ClusterRoleBinding/${binding.metadata?.name}`,
-              message: `${roleRef.name} bound to anonymous/unauthenticated users`,
-              recommendation: 'Remove anonymous access to privileged roles immediately',
-            });
+            findings.push(
+              createFinding(
+                'k8s-anonymous-cluster-admin',
+                `ClusterRoleBinding/${binding.metadata?.name}`,
+                `${roleRef.name} bound to anonymous/unauthenticated users`,
+                'critical',
+                'Remove anonymous access to privileged roles immediately'
+              )
+            );
           }
 
           // Binding to all authenticated users
           if (subject.name === 'system:authenticated') {
-            findings.push({
-              id: 'k8s-all-users-privileged',
-              severity: 'warning',
-              resource: `ClusterRoleBinding/${binding.metadata?.name}`,
-              message: `${roleRef.name} bound to all authenticated users`,
-              recommendation: 'Restrict privileged roles to specific users/groups',
-            });
+            findings.push(
+              createFinding(
+                'k8s-all-users-privileged',
+                `ClusterRoleBinding/${binding.metadata?.name}`,
+                `${roleRef.name} bound to all authenticated users`,
+                'warning',
+                'Restrict privileged roles to specific users/groups'
+              )
+            );
           }
 
           // Default ServiceAccount in any namespace
           if (subject.kind === 'ServiceAccount' && subject.name === 'default') {
-            findings.push({
-              id: 'k8s-default-sa-privileged',
-              severity: 'warning',
-              resource: `ClusterRoleBinding/${binding.metadata?.name}`,
-              message: `${roleRef.name} bound to default ServiceAccount in ${subject.namespace || 'all namespaces'}`,
-              recommendation: 'Create specific ServiceAccounts instead of using default',
-            });
+            findings.push(
+              createFinding(
+                'k8s-default-sa-privileged',
+                `ClusterRoleBinding/${binding.metadata?.name}`,
+                `${roleRef.name} bound to default ServiceAccount in ${subject.namespace || 'all namespaces'}`,
+                'warning',
+                'Create specific ServiceAccounts instead of using default'
+              )
+            );
           }
         }
       }
@@ -326,13 +336,15 @@ async function scanClusterRoleBindings(rbacApi: RBACApi): Promise<Finding[]> {
       ) || [];
 
     if (adminBindings.length > 5) {
-      findings.push({
-        id: 'k8s-too-many-cluster-admins',
-        severity: 'warning',
-        resource: 'ClusterRoleBindings',
-        message: `${adminBindings.length} non-system cluster-admin bindings`,
-        recommendation: 'Review and reduce cluster-admin assignments',
-      });
+      findings.push(
+        createFinding(
+          'k8s-too-many-cluster-admins',
+          'ClusterRoleBindings',
+          `${adminBindings.length} non-system cluster-admin bindings`,
+          'warning',
+          'Review and reduce cluster-admin assignments'
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { statusCode?: number };
@@ -373,13 +385,15 @@ async function scanNamespacedRBAC(rbacApi: RBACApi, coreApi: CoreApi): Promise<F
             criticalNamespaces.includes(ns) &&
             (subject.name === 'system:anonymous' || subject.name === 'system:unauthenticated')
           ) {
-            findings.push({
-              id: 'k8s-anonymous-in-critical-ns',
-              severity: 'critical',
-              resource: `RoleBinding/${ns}/${binding.metadata?.name}`,
-              message: `Anonymous access granted in ${ns} namespace`,
-              recommendation: 'Remove anonymous access from critical namespaces',
-            });
+            findings.push(
+              createFinding(
+                'k8s-anonymous-in-critical-ns',
+                `RoleBinding/${ns}/${binding.metadata?.name}`,
+                `Anonymous access granted in ${ns} namespace`,
+                'critical',
+                'Remove anonymous access from critical namespaces'
+              )
+            );
           }
         }
       }
@@ -394,13 +408,15 @@ async function scanNamespacedRBAC(rbacApi: RBACApi, coreApi: CoreApi): Promise<F
               rule.resources?.includes('secrets') &&
               (rule.verbs?.includes('*') || rule.verbs?.includes('get'))
             ) {
-              findings.push({
-                id: 'k8s-kube-system-secrets-access',
-                severity: 'info',
-                resource: `Role/${ns}/${role.metadata?.name}`,
-                message: 'Role grants secrets access in kube-system',
-                recommendation: 'Review if this secrets access is necessary',
-              });
+              findings.push(
+                createFinding(
+                  'k8s-kube-system-secrets-access',
+                  `Role/${ns}/${role.metadata?.name}`,
+                  'Role grants secrets access in kube-system',
+                  'info',
+                  'Review if this secrets access is necessary'
+                )
+              );
             }
           }
         }
@@ -430,13 +446,15 @@ async function scanServiceAccounts(coreApi: CoreApi, rbacApi: RBACApi): Promise<
 
       // Check for secrets associated with SA (long-lived tokens)
       if (sa.secrets && sa.secrets.length > 0) {
-        findings.push({
-          id: 'k8s-sa-long-lived-token',
-          severity: 'info',
-          resource: `ServiceAccount/${sa.metadata?.namespace}/${sa.metadata?.name}`,
-          message: 'ServiceAccount has long-lived token secrets',
-          recommendation: 'Use TokenRequest API for short-lived tokens (K8s 1.24+)',
-        });
+        findings.push(
+          createFinding(
+            'k8s-sa-long-lived-token',
+            `ServiceAccount/${sa.metadata?.namespace}/${sa.metadata?.name}`,
+            'ServiceAccount has long-lived token secrets',
+            'info',
+            'Use TokenRequest API for short-lived tokens (K8s 1.24+)'
+          )
+        );
       }
     }
 
@@ -460,13 +478,15 @@ async function scanServiceAccounts(coreApi: CoreApi, rbacApi: RBACApi): Promise<
         );
 
         if (defaultBindings && defaultBindings.length > 0) {
-          findings.push({
-            id: 'k8s-default-sa-has-bindings',
-            severity: 'warning',
-            resource: `ServiceAccount/${ns}/default`,
-            message: `Default ServiceAccount has ${defaultBindings.length} RoleBindings`,
-            recommendation: 'Create specific ServiceAccounts for pods instead of using default',
-          });
+          findings.push(
+            createFinding(
+              'k8s-default-sa-has-bindings',
+              `ServiceAccount/${ns}/default`,
+              `Default ServiceAccount has ${defaultBindings.length} RoleBindings`,
+              'warning',
+              'Create specific ServiceAccounts for pods instead of using default'
+            )
+          );
         }
       }
     }
@@ -495,13 +515,15 @@ async function checkDefaultConfigs(rbacApi: RBACApi): Promise<Finding[]> {
 
     // system:masters is fine if it's only the default binding
     if (mastersBindings.length > 1) {
-      findings.push({
-        id: 'k8s-multiple-masters-bindings',
-        severity: 'info',
-        resource: 'ClusterRoleBindings',
-        message: `${mastersBindings.length} bindings reference system:masters group`,
-        recommendation: 'Avoid adding more bindings to system:masters',
-      });
+      findings.push(
+        createFinding(
+          'k8s-multiple-masters-bindings',
+          'ClusterRoleBindings',
+          `${mastersBindings.length} bindings reference system:masters group`,
+          'info',
+          'Avoid adding more bindings to system:masters'
+        )
+      );
     }
 
     // 2. Check for publicly accessible API server (would need network check)

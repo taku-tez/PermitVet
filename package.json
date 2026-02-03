@@ -7,7 +7,7 @@
     "permitvet": "./bin/permitvet.js"
   },
   "scripts": {
-    "test": "npm run build && node --test test/*.test.js",
+    "test": "node --test test/*.test.js",
     "test:aws": "node bin/permitvet.js scan aws",
     "test:aws:check": "node bin/permitvet.js scan aws --format json --output /tmp/permitvet-aws.json && node -e \"const r=require('/tmp/permitvet-aws.json'); console.log('Critical:', r.summary?.critical || 0); process.exit(r.summary?.critical > 0 ? 1 : 0)\"",
     "lint": "eslint src/ bin/ test/",
@@ -18,7 +18,8 @@
     "lint:fix": "eslint --fix src/ bin/ test/",
     "build": "tsc",
     "type-check": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "pretest": "npm run build"
   },
   "keywords": [
     "iam",

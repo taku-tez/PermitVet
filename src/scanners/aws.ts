@@ -35,7 +35,7 @@ interface CredentialReportUser {
 /**
  * Scan AWS IAM for permission issues
  */
-export async function scanAWS(options: ScanOptions = {}): Promise<Finding[]> {
+export async function scanAWS(_options: ScanOptions = {}): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {
@@ -140,7 +140,7 @@ async function scanAccountSummary(
         )
       );
     }
-  } catch (_error) {
+  } catch {
     // Permission denied - skip
   }
 
@@ -369,7 +369,7 @@ async function scanCredentialReport(
         }
       }
     }
-  } catch (_error) {
+  } catch {
     // Permission denied - skip
   }
 
@@ -455,7 +455,7 @@ async function scanUser(
         });
       }
     }
-  } catch (_error) {
+  } catch {
     // Permission denied - skip
   }
 
@@ -559,7 +559,7 @@ async function scanRole(
         findings.push(...policyFindings);
       }
     }
-  } catch (_error) {
+  } catch {
     // Permission denied - skip
   }
 
@@ -744,7 +744,7 @@ async function analyzePolicyDocument(
         });
       }
     }
-  } catch (_error) {
+  } catch {
     // Permission denied or policy not found - skip
   }
 

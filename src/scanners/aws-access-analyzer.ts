@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
+// Utils imported as needed
 
 interface AccessAnalyzerClient {
   send: (command: unknown) => Promise<unknown>;

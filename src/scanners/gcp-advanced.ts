@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 // GCP types
 interface OrgPolicy {
@@ -68,35 +69,37 @@ export async function scanGCPAdvanced(options: ScanOptions = {}): Promise<Findin
       options.project || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
 
     if (!projectId) {
-      console.error('No GCP project specified.');
+      logError('No GCP project specified.');
       return findings;
     }
 
     // 1. Organization Policies (IAM-related)
-    console.log('  Checking Organization Policies...');
+    logProgress('Checking Organization Policies...');
     const orgPolicyFindings = await scanOrganizationPolicies(auth, projectId);
     findings.push(...orgPolicyFindings);
 
     // 2. Resource Hierarchy Inheritance
-    console.log('  Analyzing IAM hierarchy...');
+    logProgress('Analyzing IAM hierarchy...');
     const hierarchyFindings = await analyzeIAMHierarchy(auth, projectId);
     findings.push(...hierarchyFindings);
 
     // 3. Workload Identity Federation
-    console.log('  Checking Workload Identity...');
+    logProgress('Checking Workload Identity...');
     const workloadFindings = await checkWorkloadIdentity(auth, projectId);
     findings.push(...workloadFindings);
   } catch (error) {
-    const err = error as Error & { code?: string | number };
-    if (err.code === 403) {
-      findings.push({
-        id: 'gcp-advanced-permission-denied',
-        severity: 'info',
-        resource: `Project/${options.project}`,
-        message: 'Unable to access advanced GCP features',
-        recommendation: 'Ensure scanner has orgpolicy.* and accesscontextmanager.* permissions',
-      });
-    } else if (err.code !== 'MODULE_NOT_FOUND') {
+    const result = handleScanError(error, { provider: 'gcp', operation: 'advanced scan' });
+    if (result.type === 'permission_denied') {
+      findings.push(
+        createFinding(
+          'gcp-advanced-permission-denied',
+          `Project/${options.project}`,
+          'Unable to access advanced GCP features',
+          'info',
+          'Ensure scanner has orgpolicy.* and accesscontextmanager.* permissions'
+        )
+      );
+    } else if (result.type !== 'sdk_not_installed' && result.shouldThrow) {
       throw error;
     }
   }
@@ -165,14 +168,16 @@ async function scanOrganizationPolicies(auth: any, projectId: string): Promise<F
       const policyName = constraint.replace('constraints/', '');
 
       if (!setPolicies.has(policyName)) {
-        findings.push({
-          id: `gcp-orgpolicy-${policyName.replace(/\./g, '-')}`,
-          severity: config.severity,
-          resource: `Project/${projectId}`,
-          message: config.msg,
-          recommendation: config.recommendation,
-          cis: config.cis,
-        });
+        findings.push(
+          createFinding(
+            `gcp-orgpolicy-${policyName.replace(/\./g, '-')}`,
+            `Project/${projectId}`,
+            config.msg,
+            config.severity,
+            config.recommendation,
+            config.cis ? { cis: config.cis } : undefined
+          )
+        );
       }
     }
 
@@ -184,13 +189,15 @@ async function scanOrganizationPolicies(auth: any, projectId: string): Promise<F
       if (policy.spec?.rules?.[0]?.enforce === false) {
         const config = securityPolicies[`constraints/${constraintName}`];
         if (config?.expected) {
-          findings.push({
-            id: `gcp-orgpolicy-not-enforced-${constraintName?.replace(/\./g, '-')}`,
-            severity: config.severity,
-            resource: `Project/${projectId}`,
-            message: `${constraintName} is set but not enforced`,
-            recommendation: config.recommendation,
-          });
+          findings.push(
+            createFinding(
+              `gcp-orgpolicy-not-enforced-${constraintName?.replace(/\./g, '-')}`,
+              `Project/${projectId}`,
+              `${constraintName} is set but not enforced`,
+              config.severity,
+              config.recommendation
+            )
+          );
         }
       }
     }
@@ -222,13 +229,15 @@ async function analyzeIAMHierarchy(auth: any, projectId: string): Promise<Findin
     const parent = project.parent;
 
     if (!parent) {
-      findings.push({
-        id: 'gcp-project-no-org',
-        severity: 'info',
-        resource: `Project/${projectId}`,
-        message: 'Project is not part of an organization',
-        recommendation: 'Move project to an organization for centralized governance',
-      });
+      findings.push(
+        createFinding(
+          'gcp-project-no-org',
+          `Project/${projectId}`,
+          'Project is not part of an organization',
+          'info',
+          'Move project to an organization for centralized governance'
+        )
+      );
       return findings;
     }
 
@@ -258,18 +267,22 @@ async function analyzeIAMHierarchy(auth: any, projectId: string): Promise<Findin
         const inheritedDangerousRoles = ['roles/owner', 'roles/editor', 'roles/iam.securityAdmin'];
 
         if (role && inheritedDangerousRoles.includes(role)) {
-          findings.push({
-            id: 'gcp-inherited-privileged-role',
-            severity: 'warning',
-            resource: `Project/${projectId}`,
-            message: `Project inherits ${role} from ${parent}`,
-            recommendation: 'Review inherited permissions. Prefer project-level assignments.',
-            details: {
-              parent,
-              role,
-              memberCount: members.length,
-            },
-          });
+          findings.push(
+            createFinding(
+              'gcp-inherited-privileged-role',
+              `Project/${projectId}`,
+              `Project inherits ${role} from ${parent}`,
+              'warning',
+              'Review inherited permissions. Prefer project-level assignments.',
+              {
+                details: {
+                  parent,
+                  role,
+                  memberCount: members.length,
+                },
+              }
+            )
+          );
         }
       }
     }
@@ -302,26 +315,30 @@ async function checkWorkloadIdentity(auth: any, projectId: string): Promise<Find
     // If no pools but project has GKE or external workloads, suggest WI
     if (pools.length === 0) {
       // This is just informational
-      findings.push({
-        id: 'gcp-no-workload-identity',
-        severity: 'info',
-        resource: `Project/${projectId}`,
-        message: 'No Workload Identity pools configured',
-        recommendation: 'Use Workload Identity for GKE and external workloads',
-      });
+      findings.push(
+        createFinding(
+          'gcp-no-workload-identity',
+          `Project/${projectId}`,
+          'No Workload Identity pools configured',
+          'info',
+          'Use Workload Identity for GKE and external workloads'
+        )
+      );
       return findings;
     }
 
     for (const pool of pools) {
       // Check if pool is disabled
       if (pool.disabled) {
-        findings.push({
-          id: 'gcp-workload-identity-disabled',
-          severity: 'info',
-          resource: pool.name || 'Unknown',
-          message: 'Workload Identity pool is disabled',
-          recommendation: 'Remove disabled pools if not needed',
-        });
+        findings.push(
+          createFinding(
+            'gcp-workload-identity-disabled',
+            pool.name || 'Unknown',
+            'Workload Identity pool is disabled',
+            'info',
+            'Remove disabled pools if not needed'
+          )
+        );
         continue;
       }
 
@@ -336,26 +353,29 @@ async function checkWorkloadIdentity(auth: any, projectId: string): Promise<Find
       for (const provider of providers) {
         // Check for overly permissive attribute conditions
         if (!provider.attributeCondition) {
-          findings.push({
-            id: 'gcp-workload-identity-no-condition',
-            severity: 'warning',
-            resource: provider.name || 'Unknown',
-            message: 'Workload Identity provider has no attribute condition',
-            recommendation:
-              'Add attribute conditions to restrict which identities can authenticate',
-          });
+          findings.push(
+            createFinding(
+              'gcp-workload-identity-no-condition',
+              provider.name || 'Unknown',
+              'Workload Identity provider has no attribute condition',
+              'warning',
+              'Add attribute conditions to restrict which identities can authenticate'
+            )
+          );
         }
 
         // Check AWS provider configuration
         if (provider.aws) {
           if (!provider.attributeCondition?.includes('aws.arn')) {
-            findings.push({
-              id: 'gcp-workload-identity-aws-no-arn-filter',
-              severity: 'warning',
-              resource: provider.name || 'Unknown',
-              message: 'AWS Workload Identity provider not filtering by ARN',
-              recommendation: 'Add attribute condition on aws.arn to restrict access',
-            });
+            findings.push(
+              createFinding(
+                'gcp-workload-identity-aws-no-arn-filter',
+                provider.name || 'Unknown',
+                'AWS Workload Identity provider not filtering by ARN',
+                'warning',
+                'Add attribute condition on aws.arn to restrict access'
+              )
+            );
           }
         }
 
@@ -363,13 +383,15 @@ async function checkWorkloadIdentity(auth: any, projectId: string): Promise<Find
         if (provider.oidc) {
           // Check allowed audiences
           if (!provider.oidc.allowedAudiences?.length) {
-            findings.push({
-              id: 'gcp-workload-identity-oidc-no-audience',
-              severity: 'info',
-              resource: provider.name || 'Unknown',
-              message: 'OIDC Workload Identity provider has no audience restriction',
-              recommendation: 'Specify allowed audiences for OIDC tokens',
-            });
+            findings.push(
+              createFinding(
+                'gcp-workload-identity-oidc-no-audience',
+                provider.name || 'Unknown',
+                'OIDC Workload Identity provider has no audience restriction',
+                'info',
+                'Specify allowed audiences for OIDC tokens'
+              )
+            );
           }
         }
       }

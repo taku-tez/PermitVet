@@ -104,7 +104,7 @@ interface GraphRequest {
 /**
  * Scan Azure Entra ID for security issues
  */
-export async function scanEntraID(options: ScanOptions = {}): Promise<Finding[]> {
+export async function scanEntraID(_options: ScanOptions = {}): Promise<Finding[]> {
   const findings: Finding[] = [];
 
   try {

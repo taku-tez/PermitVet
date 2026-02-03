@@ -3,7 +3,7 @@
  * Comprehensive CIS AWS/Azure/GCP Foundations Benchmark checks
  */
 
-import type { Severity } from '../types';
+// Types imported as needed
 
 /** CIS Control check result */
 export interface CISCheckResult {
@@ -220,7 +220,7 @@ export const CIS_AWS_V3_CONTROLS: CISControl[] = [
           status: enabled ? 'PASS' : 'INFO',
           message: enabled ? 'Object Lock enabled' : 'Object Lock not enabled',
         };
-      } catch (_e) {
+      } catch {
         return {
           status: 'INFO',
           message: 'Object Lock not configured',

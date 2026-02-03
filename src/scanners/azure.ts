@@ -4,7 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
-import { createFinding, handleScanError, logProgress, logError } from '../utils';
+import { handleScanError, logProgress, logError } from '../utils';
 
 // Azure SDK types
 interface RoleAssignment {

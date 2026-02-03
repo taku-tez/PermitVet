@@ -3,7 +3,8 @@
  * Management Group inheritance, Inherited Roles, Deny Assignments
  */
 
-import type { Finding, ScanOptions, Severity } from '../types';
+import type { Finding, ScanOptions } from '../types';
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 // Azure SDK types
 interface ManagementGroup {
@@ -52,40 +53,42 @@ export async function scanAzureAdvanced(options: ScanOptions = {}): Promise<Find
     const subscriptionId = options.subscription || process.env.AZURE_SUBSCRIPTION_ID;
 
     if (!subscriptionId) {
-      console.log('  No subscription specified, scanning management groups only...');
+      logProgress('No subscription specified, scanning management groups only...');
     }
 
     // 1. Management Group Analysis
-    console.log('  Analyzing Management Groups...');
+    logProgress('Analyzing Management Groups...');
     const mgFindings = await analyzeManagementGroups(credential, subscriptionId);
     findings.push(...mgFindings);
 
     // 2. Inherited Role Assignments
     if (subscriptionId) {
-      console.log('  Checking inherited role assignments...');
+      logProgress('Checking inherited role assignments...');
       const inheritedFindings = await checkInheritedRoles(credential, subscriptionId);
       findings.push(...inheritedFindings);
     }
 
     // 3. Deny Assignments
     if (subscriptionId) {
-      console.log('  Checking Deny Assignments...');
+      logProgress('Checking Deny Assignments...');
       const denyFindings = await checkDenyAssignments(credential, subscriptionId);
       findings.push(...denyFindings);
     }
   } catch (error) {
-    const err = error as Error & { code?: string; statusCode?: number };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('Azure SDK not installed.');
-    } else if (err.statusCode === 403) {
-      findings.push({
-        id: 'azure-advanced-permission-denied',
-        severity: 'info',
-        resource: 'Azure',
-        message: 'Unable to access advanced Azure features',
-        recommendation: 'Ensure scanner has Management Group Reader role',
-      });
-    } else {
+    const result = handleScanError(error, { provider: 'azure', operation: 'advanced scan' });
+    if (result.type === 'sdk_not_installed') {
+      logError(result.message);
+    } else if (result.type === 'permission_denied') {
+      findings.push(
+        createFinding(
+          'azure-advanced-permission-denied',
+          'Azure',
+          'Unable to access advanced Azure features',
+          'info',
+          'Ensure scanner has Management Group Reader role'
+        )
+      );
+    } else if (result.shouldThrow) {
       throw error;
     }
   }
@@ -98,7 +101,7 @@ export async function scanAzureAdvanced(options: ScanOptions = {}): Promise<Find
  */
 async function analyzeManagementGroups(
   credential: InstanceType<typeof import('@azure/identity').DefaultAzureCredential>,
-  subscriptionId?: string
+  _subscriptionId?: string
 ): Promise<Finding[]> {
   const findings: Finding[] = [];
 
@@ -113,13 +116,15 @@ async function analyzeManagementGroups(
     }
 
     if (managementGroups.length === 0) {
-      findings.push({
-        id: 'azure-no-management-groups',
-        severity: 'info',
-        resource: 'Azure',
-        message: 'No management group hierarchy configured',
-        recommendation: 'Use management groups for centralized governance at scale',
-      });
+      findings.push(
+        createFinding(
+          'azure-no-management-groups',
+          'Azure',
+          'No management group hierarchy configured',
+          'info',
+          'Use management groups for centralized governance at scale'
+        )
+      );
       return findings;
     }
 
@@ -138,13 +143,15 @@ async function analyzeManagementGroups(
         while (current.properties?.details?.parent) {
           depth++;
           if (depth > 6) {
-            findings.push({
-              id: 'azure-mg-deep-hierarchy',
-              severity: 'info',
-              resource: `ManagementGroup/${mg.name}`,
-              message: 'Management group hierarchy is very deep (>6 levels)',
-              recommendation: 'Consider flattening the hierarchy for simpler governance',
-            });
+            findings.push(
+              createFinding(
+                'azure-mg-deep-hierarchy',
+                `ManagementGroup/${mg.name}`,
+                'Management group hierarchy is very deep (>6 levels)',
+                'info',
+                'Consider flattening the hierarchy for simpler governance'
+              )
+            );
             break;
           }
           break; // Only checking immediate parent
@@ -160,13 +167,15 @@ async function analyzeManagementGroups(
           const directSubs = children.filter(c => c.type === '/subscriptions');
 
           if (directSubs.length > 10) {
-            findings.push({
-              id: 'azure-mg-many-direct-subs',
-              severity: 'info',
-              resource: `ManagementGroup/${mg.name}`,
-              message: `${directSubs.length} subscriptions directly under management group`,
-              recommendation: 'Consider organizing subscriptions into child management groups',
-            });
+            findings.push(
+              createFinding(
+                'azure-mg-many-direct-subs',
+                `ManagementGroup/${mg.name}`,
+                `${directSubs.length} subscriptions directly under management group`,
+                'info',
+                'Consider organizing subscriptions into child management groups'
+              )
+            );
           }
         }
       } catch {
@@ -222,19 +231,22 @@ async function checkInheritedRoles(
         if (assignment.scope?.includes('/providers/Microsoft.Management/managementGroups/')) {
           const mgName = assignment.scope.split('/managementGroups/')[1];
 
-          findings.push({
-            id: 'azure-inherited-privileged-from-mg',
-            severity: 'warning',
-            resource: `Subscription/${subscriptionId}`,
-            message: `Privileged role inherited from Management Group: ${mgName}`,
-            recommendation:
+          findings.push(
+            createFinding(
+              'azure-inherited-privileged-from-mg',
+              `Subscription/${subscriptionId}`,
+              `Privileged role inherited from Management Group: ${mgName}`,
+              'warning',
               'Review inherited permissions. Consider subscription-level assignments for better control.',
-            details: {
-              roleDefinitionId: assignment.roleDefinitionId,
-              principalId: assignment.principalId,
-              scope: assignment.scope,
-            },
-          });
+              {
+                details: {
+                  roleDefinitionId: assignment.roleDefinitionId,
+                  principalId: assignment.principalId,
+                  scope: assignment.scope,
+                },
+              }
+            )
+          );
         }
       }
     }
@@ -244,13 +256,15 @@ async function checkInheritedRoles(
     const directCount = assignments.length - inheritedCount;
 
     if (inheritedCount > directCount * 2) {
-      findings.push({
-        id: 'azure-many-inherited-roles',
-        severity: 'info',
-        resource: `Subscription/${subscriptionId}`,
-        message: `${inheritedCount} inherited vs ${directCount} direct role assignments`,
-        recommendation: 'High ratio of inherited roles may indicate overly broad MG policies',
-      });
+      findings.push(
+        createFinding(
+          'azure-many-inherited-roles',
+          `Subscription/${subscriptionId}`,
+          `${inheritedCount} inherited vs ${directCount} direct role assignments`,
+          'info',
+          'High ratio of inherited roles may indicate overly broad MG policies'
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { statusCode?: number };
@@ -282,13 +296,15 @@ async function checkDenyAssignments(
 
     if (denyAssignments.length === 0) {
       // This is just informational
-      findings.push({
-        id: 'azure-no-deny-assignments',
-        severity: 'info',
-        resource: `Subscription/${subscriptionId}`,
-        message: 'No deny assignments configured',
-        recommendation: 'Consider using Azure Blueprints for immutable resource protection',
-      });
+      findings.push(
+        createFinding(
+          'azure-no-deny-assignments',
+          `Subscription/${subscriptionId}`,
+          'No deny assignments configured',
+          'info',
+          'Consider using Azure Blueprints for immutable resource protection'
+        )
+      );
       return findings;
     }
 
@@ -296,25 +312,28 @@ async function checkDenyAssignments(
     for (const deny of denyAssignments) {
       // Check for system-managed deny assignments (from Blueprints)
       if (deny.isSystemProtected) {
-        findings.push({
-          id: 'azure-blueprint-deny',
-          severity: 'info',
-          resource: deny.scope || 'Unknown',
-          message: `System-protected deny assignment: ${deny.denyAssignmentName}`,
-          recommendation:
-            'This is managed by Azure Blueprints - modification requires Blueprint update',
-        });
+        findings.push(
+          createFinding(
+            'azure-blueprint-deny',
+            deny.scope || 'Unknown',
+            `System-protected deny assignment: ${deny.denyAssignmentName}`,
+            'info',
+            'This is managed by Azure Blueprints - modification requires Blueprint update'
+          )
+        );
       }
 
       // Check scope of deny assignment
       if (deny.scope === `/subscriptions/${subscriptionId}`) {
-        findings.push({
-          id: 'azure-subscription-deny',
-          severity: 'info',
-          resource: `Subscription/${subscriptionId}`,
-          message: `Subscription-level deny assignment: ${deny.denyAssignmentName}`,
-          recommendation: 'Review deny assignment scope and excluded principals',
-        });
+        findings.push(
+          createFinding(
+            'azure-subscription-deny',
+            `Subscription/${subscriptionId}`,
+            `Subscription-level deny assignment: ${deny.denyAssignmentName}`,
+            'info',
+            'Review deny assignment scope and excluded principals'
+          )
+        );
       }
     }
   } catch (error) {

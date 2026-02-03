@@ -3,7 +3,8 @@
  * Organization-level IAM analysis, folder hierarchy, cross-project permissions
  */
 
-import type { Finding, ScanOptions, Severity } from '../types';
+import type { Finding, ScanOptions } from '../types';
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 // GCP types
 interface IAMPolicy {
@@ -63,20 +64,20 @@ export async function scanGCPOrganization(options: ScanOptions = {}): Promise<Fi
 
     if (organizationId) {
       // Organization-level scan
-      console.log(`  Scanning organization: ${organizationId}...`);
+      logProgress(`Scanning organization: ${organizationId}...`);
 
       // 1. Organization IAM Policy
-      console.log('  Checking organization IAM policy...');
+      logProgress('Checking organization IAM policy...');
       const orgIamFindings = await scanOrganizationIAM(cloudresourcemanager, organizationId);
       findings.push(...orgIamFindings);
 
       // 2. Organization-level Custom Roles
-      console.log('  Scanning organization custom roles...');
+      logProgress('Scanning organization custom roles...');
       const orgRoleFindings = await scanOrganizationRoles(iam, organizationId);
       findings.push(...orgRoleFindings);
 
       // 3. Folder hierarchy analysis
-      console.log('  Analyzing folder hierarchy...');
+      logProgress('Analyzing folder hierarchy...');
       const folderFindings = await analyzeFolderHierarchy(
         cloudresourcemanager,
         `organizations/${organizationId}`
@@ -85,7 +86,7 @@ export async function scanGCPOrganization(options: ScanOptions = {}): Promise<Fi
 
       // 4. All projects in organization (if requested)
       if (allProjects) {
-        console.log('  Scanning all projects in organization...');
+        logProgress('Scanning all projects in organization...');
         const projectFindings = await scanAllProjects(
           cloudresourcemanager,
           `organizations/${organizationId}`
@@ -94,15 +95,15 @@ export async function scanGCPOrganization(options: ScanOptions = {}): Promise<Fi
       }
     } else if (folderId) {
       // Folder-level scan
-      console.log(`  Scanning folder: ${folderId}...`);
+      logProgress(`Scanning folder: ${folderId}...`);
 
       // 1. Folder IAM Policy
-      console.log('  Checking folder IAM policy...');
+      logProgress('Checking folder IAM policy...');
       const folderIamFindings = await scanFolderIAM(cloudresourcemanager, folderId);
       findings.push(...folderIamFindings);
 
       // 2. Sub-folder hierarchy
-      console.log('  Analyzing sub-folder hierarchy...');
+      logProgress('Analyzing sub-folder hierarchy...');
       const subFolderFindings = await analyzeFolderHierarchy(
         cloudresourcemanager,
         `folders/${folderId}`
@@ -111,34 +112,38 @@ export async function scanGCPOrganization(options: ScanOptions = {}): Promise<Fi
 
       // 3. All projects in folder (if requested)
       if (allProjects) {
-        console.log('  Scanning all projects in folder...');
+        logProgress('Scanning all projects in folder...');
         const projectFindings = await scanAllProjects(cloudresourcemanager, `folders/${folderId}`);
         findings.push(...projectFindings);
       }
     } else if (allProjects) {
       // Need organization or folder for all-projects scan
-      console.error('  --all-projects requires --organization or --folder');
-      findings.push({
-        id: 'gcp-org-missing-parent',
-        severity: 'info',
-        resource: 'GCP',
-        message: '--all-projects requires --organization or --folder',
-        recommendation: 'Specify organization ID or folder ID',
-      });
+      logError('--all-projects requires --organization or --folder');
+      findings.push(
+        createFinding(
+          'gcp-org-missing-parent',
+          'GCP',
+          '--all-projects requires --organization or --folder',
+          'info',
+          'Specify organization ID or folder ID'
+        )
+      );
     }
   } catch (error) {
-    const err = error as Error & { code?: string | number };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('GCP SDK not installed.');
-    } else if (err.code === 403) {
-      findings.push({
-        id: 'gcp-org-permission-denied',
-        severity: 'warning',
-        resource: 'Organization',
-        message: 'Unable to access organization-level resources',
-        recommendation: 'Ensure scanner has resourcemanager.organizations.* permissions',
-      });
-    } else {
+    const result = handleScanError(error, { provider: 'gcp', operation: 'organization scan' });
+    if (result.type === 'sdk_not_installed') {
+      logError(result.message);
+    } else if (result.type === 'permission_denied') {
+      findings.push(
+        createFinding(
+          'gcp-org-permission-denied',
+          'Organization',
+          'Unable to access organization-level resources',
+          'warning',
+          'Ensure scanner has resourcemanager.organizations.* permissions'
+        )
+      );
+    } else if (result.shouldThrow) {
       throw error;
     }
   }
@@ -166,38 +171,44 @@ async function scanFolderIAM(cloudresourcemanager: any, folderId: string): Promi
 
       // Check for public access
       if (members.includes('allUsers') || members.includes('allAuthenticatedUsers')) {
-        findings.push({
-          id: 'gcp-folder-public-access',
-          severity: 'critical',
-          resource: `Folder/${folderId}`,
-          message: `Role ${role} granted to ${members.includes('allUsers') ? 'allUsers' : 'allAuthenticatedUsers'}`,
-          recommendation: 'Remove public access from folder IAM policy',
-        });
+        findings.push(
+          createFinding(
+            'gcp-folder-public-access',
+            `Folder/${folderId}`,
+            `Role ${role} granted to ${members.includes('allUsers') ? 'allUsers' : 'allAuthenticatedUsers'}`,
+            'critical',
+            'Remove public access from folder IAM policy'
+          )
+        );
       }
 
       // Check for broad domain access
       for (const member of members) {
         if (member.startsWith('domain:')) {
-          findings.push({
-            id: 'gcp-folder-domain-access',
-            severity: 'warning',
-            resource: `Folder/${folderId}`,
-            message: `Role ${role} granted to entire domain: ${member}`,
-            recommendation: 'Consider restricting to specific users or groups',
-          });
+          findings.push(
+            createFinding(
+              'gcp-folder-domain-access',
+              `Folder/${folderId}`,
+              `Role ${role} granted to entire domain: ${member}`,
+              'warning',
+              'Consider restricting to specific users or groups'
+            )
+          );
         }
       }
     }
   } catch (error) {
     const err = error as Error & { code?: number };
     if (err.code === 403) {
-      findings.push({
-        id: 'gcp-folder-permission-denied',
-        severity: 'info',
-        resource: `Folder/${folderId}`,
-        message: 'Unable to read folder IAM policy',
-        recommendation: 'Ensure scanner has resourcemanager.folders.getIamPolicy permission',
-      });
+      findings.push(
+        createFinding(
+          'gcp-folder-permission-denied',
+          `Folder/${folderId}`,
+          'Unable to read folder IAM policy',
+          'info',
+          'Ensure scanner has resourcemanager.folders.getIamPolicy permission'
+        )
+      );
     }
   }
 
@@ -227,49 +238,56 @@ async function scanOrganizationIAM(
 
       // Critical: Organization-level Owner/Editor
       if (role === 'roles/owner' || role === 'roles/editor') {
-        findings.push({
-          id: 'gcp-org-primitive-role',
-          severity: 'critical',
-          resource: `Organization/${organizationId}`,
-          message: `${members.length} principal(s) have ${role} at organization level`,
-          recommendation:
+        findings.push(
+          createFinding(
+            'gcp-org-primitive-role',
+            `Organization/${organizationId}`,
+            `${members.length} principal(s) have ${role} at organization level`,
+            'critical',
             'Avoid primitive roles at org level. Use folder/project-level assignments.',
-          details: { role, memberCount: members.length },
-        });
+            { details: { role, memberCount: members.length } }
+          )
+        );
       }
 
       // Organization Admin
       if (role === 'roles/resourcemanager.organizationAdmin') {
-        findings.push({
-          id: 'gcp-org-admin-count',
-          severity: members.length > 5 ? 'warning' : 'info',
-          resource: `Organization/${organizationId}`,
-          message: `${members.length} Organization Admin(s)`,
-          recommendation: 'Limit Organization Admins to essential personnel only',
-          details: { memberCount: members.length },
-        });
+        findings.push(
+          createFinding(
+            'gcp-org-admin-count',
+            `Organization/${organizationId}`,
+            `${members.length} Organization Admin(s)`,
+            members.length > 5 ? 'warning' : 'info',
+            'Limit Organization Admins to essential personnel only',
+            { details: { memberCount: members.length } }
+          )
+        );
       }
 
       // Folder Admin at org level (can manage all folders)
       if (role === 'roles/resourcemanager.folderAdmin') {
-        findings.push({
-          id: 'gcp-org-folder-admin',
-          severity: 'warning',
-          resource: `Organization/${organizationId}`,
-          message: `${members.length} principal(s) have Folder Admin at org level`,
-          recommendation: 'Assign Folder Admin at folder level, not organization',
-        });
+        findings.push(
+          createFinding(
+            'gcp-org-folder-admin',
+            `Organization/${organizationId}`,
+            `${members.length} principal(s) have Folder Admin at org level`,
+            'warning',
+            'Assign Folder Admin at folder level, not organization'
+          )
+        );
       }
 
       // IAM Security Admin at org level
       if (role === 'roles/iam.securityAdmin') {
-        findings.push({
-          id: 'gcp-org-security-admin',
-          severity: 'warning',
-          resource: `Organization/${organizationId}`,
-          message: `${members.length} Security Admin(s) at organization level`,
-          recommendation: 'Review if org-wide Security Admin is necessary',
-        });
+        findings.push(
+          createFinding(
+            'gcp-org-security-admin',
+            `Organization/${organizationId}`,
+            `${members.length} Security Admin(s) at organization level`,
+            'warning',
+            'Review if org-wide Security Admin is necessary'
+          )
+        );
       }
 
       // Service Account with org-level permissions
@@ -284,13 +302,15 @@ async function scanOrganizationIAM(
           ];
 
           if (role && dangerousOrgRoles.includes(role)) {
-            findings.push({
-              id: 'gcp-org-sa-privileged',
-              severity: 'critical',
-              resource: `Organization/${organizationId}`,
-              message: `Service account ${member} has ${role} at org level`,
-              recommendation: 'Service accounts should not have org-level privileged roles',
-            });
+            findings.push(
+              createFinding(
+                'gcp-org-sa-privileged',
+                `Organization/${organizationId}`,
+                `Service account ${member} has ${role} at org level`,
+                'critical',
+                'Service accounts should not have org-level privileged roles'
+              )
+            );
           }
         }
       }
@@ -301,13 +321,15 @@ async function scanOrganizationIAM(
           // Check if user is from a different domain (would need org domain info)
           // For now, flag any user with high privileges
           if (role === 'roles/owner' || role === 'roles/resourcemanager.organizationAdmin') {
-            findings.push({
-              id: 'gcp-org-user-privileged',
-              severity: 'warning',
-              resource: `Organization/${organizationId}`,
-              message: `User ${member} has ${role} at org level`,
-              recommendation: 'Review if user requires org-level privileges',
-            });
+            findings.push(
+              createFinding(
+                'gcp-org-user-privileged',
+                `Organization/${organizationId}`,
+                `User ${member} has ${role} at org level`,
+                'warning',
+                'Review if user requires org-level privileges'
+              )
+            );
           }
         }
       }
@@ -315,13 +337,15 @@ async function scanOrganizationIAM(
   } catch (error) {
     const err = error as Error & { code?: number };
     if (err.code === 403) {
-      findings.push({
-        id: 'gcp-org-iam-denied',
-        severity: 'info',
-        resource: `Organization/${organizationId}`,
-        message: 'Unable to read organization IAM policy',
-        recommendation: 'Need resourcemanager.organizations.getIamPolicy permission',
-      });
+      findings.push(
+        createFinding(
+          'gcp-org-iam-denied',
+          `Organization/${organizationId}`,
+          'Unable to read organization IAM policy',
+          'info',
+          'Need resourcemanager.organizations.getIamPolicy permission'
+        )
+      );
     } else {
       throw error;
     }
@@ -367,26 +391,30 @@ async function scanOrganizationRoles(iam: any, organizationId: string): Promise<
         // Check for critical permissions
         const hasCritical = permissions.filter(p => criticalPermissions.includes(p));
         if (hasCritical.length > 0) {
-          findings.push({
-            id: 'gcp-org-role-critical-perms',
-            severity: 'critical',
-            resource: `OrgRole/${role.name?.split('/').pop()}`,
-            message: `Org-level custom role has ${hasCritical.length} critical permission(s)`,
-            recommendation: 'Review critical permissions in organization-level custom roles',
-            details: { criticalPermissions: hasCritical },
-          });
+          findings.push(
+            createFinding(
+              'gcp-org-role-critical-perms',
+              `OrgRole/${role.name?.split('/').pop()}`,
+              `Org-level custom role has ${hasCritical.length} critical permission(s)`,
+              'critical',
+              'Review critical permissions in organization-level custom roles',
+              { details: { criticalPermissions: hasCritical } }
+            )
+          );
         }
 
         // Check for wildcard permissions
         const wildcards = permissions.filter(p => p.endsWith('*'));
         if (wildcards.length > 0) {
-          findings.push({
-            id: 'gcp-org-role-wildcards',
-            severity: 'warning',
-            resource: `OrgRole/${role.name?.split('/').pop()}`,
-            message: `Org-level custom role uses ${wildcards.length} wildcard permission(s)`,
-            recommendation: 'Avoid wildcards in organization-level roles',
-          });
+          findings.push(
+            createFinding(
+              'gcp-org-role-wildcards',
+              `OrgRole/${role.name?.split('/').pop()}`,
+              `Org-level custom role uses ${wildcards.length} wildcard permission(s)`,
+              'warning',
+              'Avoid wildcards in organization-level roles'
+            )
+          );
         }
       } catch {
         // Skip if can't get role details
@@ -395,13 +423,15 @@ async function scanOrganizationRoles(iam: any, organizationId: string): Promise<
 
     // Report org role count
     if (roles.length > 20) {
-      findings.push({
-        id: 'gcp-org-many-custom-roles',
-        severity: 'info',
-        resource: `Organization/${organizationId}`,
-        message: `${roles.length} custom roles defined at organization level`,
-        recommendation: 'Review if all org-level roles are necessary',
-      });
+      findings.push(
+        createFinding(
+          'gcp-org-many-custom-roles',
+          `Organization/${organizationId}`,
+          `${roles.length} custom roles defined at organization level`,
+          'info',
+          'Review if all org-level roles are necessary'
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { code?: number };
@@ -444,24 +474,28 @@ async function analyzeFolderHierarchy(
 
           // Primitive roles at folder level
           if (role === 'roles/owner' || role === 'roles/editor') {
-            findings.push({
-              id: 'gcp-folder-primitive-role',
-              severity: 'warning',
-              resource: `Folder/${folder.displayName}`,
-              message: `${members.length} principal(s) have ${role} at folder level`,
-              recommendation: 'Prefer project-level role assignments over folder-level',
-            });
+            findings.push(
+              createFinding(
+                'gcp-folder-primitive-role',
+                `Folder/${folder.displayName}`,
+                `${members.length} principal(s) have ${role} at folder level`,
+                'warning',
+                'Prefer project-level role assignments over folder-level'
+              )
+            );
           }
 
           // Check for allUsers/allAuthenticatedUsers
           if (members.includes('allUsers') || members.includes('allAuthenticatedUsers')) {
-            findings.push({
-              id: 'gcp-folder-public-access',
-              severity: 'critical',
-              resource: `Folder/${folder.displayName}`,
-              message: `Public access granted at folder level: ${role}`,
-              recommendation: 'Remove public access from folders immediately',
-            });
+            findings.push(
+              createFinding(
+                'gcp-folder-public-access',
+                `Folder/${folder.displayName}`,
+                `Public access granted at folder level: ${role}`,
+                'critical',
+                'Remove public access from folders immediately'
+              )
+            );
           }
         }
       } catch {
@@ -475,13 +509,15 @@ async function analyzeFolderHierarchy(
 
     // Check folder count
     if (folders.length > 50) {
-      findings.push({
-        id: 'gcp-many-folders',
-        severity: 'info',
-        resource: parent,
-        message: `${folders.length} direct child folders`,
-        recommendation: 'Consider consolidating folder structure if too complex',
-      });
+      findings.push(
+        createFinding(
+          'gcp-many-folders',
+          parent,
+          `${folders.length} direct child folders`,
+          'info',
+          'Consider consolidating folder structure if too complex'
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { code?: number };
@@ -505,7 +541,7 @@ async function scanAllProjects(cloudresourcemanager: any, parent: string): Promi
 
     const projects = (response.data.projects || []) as Project[];
 
-    console.log(`  Found ${projects.length} projects...`);
+    logProgress(`Found ${projects.length} projects...`);
 
     // Cross-project analysis
     const projectPermissions = new Map<string, ProjectAccess[]>(); // member -> [projects with owner/editor]
@@ -546,17 +582,21 @@ async function scanAllProjects(cloudresourcemanager: any, parent: string): Promi
     // Analyze cross-project permissions
     for (const [member, projectAccess] of projectPermissions) {
       if (projectAccess.length > 5) {
-        findings.push({
-          id: 'gcp-cross-project-privileged',
-          severity: 'warning',
-          resource: member,
-          message: `Principal has Owner/Editor in ${projectAccess.length} projects`,
-          recommendation: 'Review if cross-project privileged access is necessary',
-          details: {
-            projectCount: projectAccess.length,
-            projects: projectAccess.slice(0, 5).map(p => p.project),
-          },
-        });
+        findings.push(
+          createFinding(
+            'gcp-cross-project-privileged',
+            member,
+            `Principal has Owner/Editor in ${projectAccess.length} projects`,
+            'warning',
+            'Review if cross-project privileged access is necessary',
+            {
+              details: {
+                projectCount: projectAccess.length,
+                projects: projectAccess.slice(0, 5).map(p => p.project),
+              },
+            }
+          )
+        );
       }
     }
 
@@ -567,24 +607,22 @@ async function scanAllProjects(cloudresourcemanager: any, parent: string): Promi
 
     for (const [sa, access] of serviceAccounts) {
       if (access.length > 3) {
-        findings.push({
-          id: 'gcp-sa-multi-project',
-          severity: 'warning',
-          resource: sa,
-          message: `Service account has privileged access to ${access.length} projects`,
-          recommendation: 'Service accounts should be scoped to single projects',
-        });
+        findings.push(
+          createFinding(
+            'gcp-sa-multi-project',
+            sa,
+            `Service account has privileged access to ${access.length} projects`,
+            'warning',
+            'Service accounts should be scoped to single projects'
+          )
+        );
       }
     }
 
     // Project count summary
-    findings.push({
-      id: 'gcp-project-count',
-      severity: 'info',
-      resource: parent,
-      message: `${projects.length} projects scanned`,
-      recommendation: '',
-    });
+    findings.push(
+      createFinding('gcp-project-count', parent, `${projects.length} projects scanned`, 'info', '')
+    );
   } catch (error) {
     const err = error as Error & { code?: number };
     if (err.code !== 403) throw error;

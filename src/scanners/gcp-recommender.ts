@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
+import { createFinding, handleScanError, logProgress, logError } from '../utils';
 
 interface RecommenderClient {
   projects: {
@@ -80,44 +81,46 @@ export async function scanGCPRecommender(options: ScanOptions = {}): Promise<Fin
       options.project || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
 
     if (!projectId) {
-      console.error('No GCP project specified. Use --project or set GOOGLE_CLOUD_PROJECT');
+      logError('No GCP project specified. Use --project or set GOOGLE_CLOUD_PROJECT');
       return findings;
     }
 
     const recommender = google.recommender({ version: 'v1', auth }) as unknown as RecommenderClient;
 
     // 1. Get IAM role recommendations (unused permissions)
-    console.log('  Fetching IAM role recommendations...');
+    logProgress('Fetching IAM role recommendations...');
     const roleFindings = await getRoleRecommendations(recommender, projectId);
     findings.push(...roleFindings);
 
     // 2. Get policy insights (over-privileged access)
-    console.log('  Fetching policy insights...');
+    logProgress('Fetching policy insights...');
     const policyFindings = await getPolicyInsights(recommender, projectId);
     findings.push(...policyFindings);
 
     // 3. Get service account insights (unused service accounts)
-    console.log('  Fetching service account insights...');
+    logProgress('Fetching service account insights...');
     const saFindings = await getServiceAccountInsights(recommender, projectId);
     findings.push(...saFindings);
 
     // 4. Get lateral movement insights
-    console.log('  Fetching lateral movement insights...');
+    logProgress('Fetching lateral movement insights...');
     const lateralFindings = await getLateralMovementInsights(recommender, projectId);
     findings.push(...lateralFindings);
   } catch (error) {
-    const err = error as Error & { code?: number | string };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('GCP SDK not installed. Run: npm install googleapis');
-    } else if (err.code === 403) {
-      findings.push({
-        id: 'gcp-recommender-denied',
-        severity: 'info',
-        resource: `Project/${options.project}`,
-        message: 'Unable to access IAM Recommender',
-        recommendation: 'Ensure scanner has recommender.* permissions',
-      });
-    } else {
+    const result = handleScanError(error, { provider: 'gcp', operation: 'recommender' });
+    if (result.type === 'sdk_not_installed') {
+      logError(result.message);
+    } else if (result.type === 'permission_denied') {
+      findings.push(
+        createFinding(
+          'gcp-recommender-denied',
+          `Project/${options.project}`,
+          'Unable to access IAM Recommender',
+          'info',
+          'Ensure scanner has recommender.* permissions'
+        )
+      );
+    } else if (result.shouldThrow) {
       throw error;
     }
   }
@@ -165,19 +168,23 @@ async function getRoleRecommendations(
         message = `Role ${targetRole} can be replaced with ${suggestedRole || 'a more restrictive role'}`;
       }
 
-      findings.push({
-        id,
-        severity,
-        resource: targetResource || rec.name || 'unknown',
-        message,
-        recommendation: rec.description || 'Review IAM role binding',
-        details: {
-          priority: rec.priority,
-          etag: rec.etag,
-          stateInfo: rec.stateInfo,
-          associatedInsights: rec.associatedInsights,
-        },
-      });
+      findings.push(
+        createFinding(
+          id,
+          targetResource || rec.name || 'unknown',
+          message,
+          severity,
+          rec.description || 'Review IAM role binding',
+          {
+            details: {
+              priority: rec.priority,
+              etag: rec.etag,
+              stateInfo: rec.stateInfo,
+              associatedInsights: rec.associatedInsights,
+            },
+          }
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { code?: number };
@@ -220,21 +227,25 @@ async function getPolicyInsights(
       const usageNum = parseFloat(usagePercent);
       if (usageNum < 10) severity = 'warning';
 
-      findings.push({
-        id: 'gcp-policy-insight',
-        severity,
-        resource: `${member} → ${role}`,
-        message: `Only ${usagePercent}% of permissions used (${usedPermissions}/${totalPermissions})`,
-        recommendation: 'Consider replacing with a more restrictive role or custom role',
-        details: {
-          member,
-          role,
-          exercisedPermissions: exercisedPermissions.slice(0, 10), // First 10
-          inferredPermissions: (content.inferredPermissions || []).slice(0, 10),
-          totalPermissions,
-          observationPeriod: insight.observationPeriod,
-        },
-      });
+      findings.push(
+        createFinding(
+          'gcp-policy-insight',
+          `${member} → ${role}`,
+          `Only ${usagePercent}% of permissions used (${usedPermissions}/${totalPermissions})`,
+          severity,
+          'Consider replacing with a more restrictive role or custom role',
+          {
+            details: {
+              member,
+              role,
+              exercisedPermissions: exercisedPermissions.slice(0, 10), // First 10
+              inferredPermissions: (content.inferredPermissions || []).slice(0, 10),
+              totalPermissions,
+              observationPeriod: insight.observationPeriod,
+            },
+          }
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { code?: number };
@@ -281,18 +292,22 @@ async function getServiceAccountInsights(
         message = 'Service account has redundant keys';
       }
 
-      findings.push({
-        id: `gcp-sa-insight-${insight.insightSubtype?.toLowerCase() || 'unknown'}`,
-        severity,
-        resource: serviceAccount,
-        message,
-        recommendation: insight.description || 'Review and remediate service account',
-        details: {
-          insightSubtype: insight.insightSubtype,
-          lastAuthenticated,
-          observationPeriod: insight.observationPeriod,
-        },
-      });
+      findings.push(
+        createFinding(
+          `gcp-sa-insight-${insight.insightSubtype?.toLowerCase() || 'unknown'}`,
+          serviceAccount,
+          message,
+          severity,
+          insight.description || 'Review and remediate service account',
+          {
+            details: {
+              insightSubtype: insight.insightSubtype,
+              lastAuthenticated,
+              observationPeriod: insight.observationPeriod,
+            },
+          }
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { code?: number };
@@ -324,19 +339,22 @@ async function getLateralMovementInsights(
       const targetAccount = content.targetServiceAccount || 'unknown';
       const impersonationPermission = content.permission || 'unknown';
 
-      findings.push({
-        id: 'gcp-lateral-movement',
-        severity: 'warning',
-        resource: sourceAccount,
-        message: `${sourceAccount} can impersonate ${targetAccount} via ${impersonationPermission}`,
-        recommendation:
+      findings.push(
+        createFinding(
+          'gcp-lateral-movement',
+          sourceAccount,
+          `${sourceAccount} can impersonate ${targetAccount} via ${impersonationPermission}`,
+          'warning',
           'Review if this impersonation is necessary. Consider removing the permission.',
-        details: {
-          sourceServiceAccount: sourceAccount,
-          targetServiceAccount: targetAccount,
-          permission: impersonationPermission,
-        },
-      });
+          {
+            details: {
+              sourceServiceAccount: sourceAccount,
+              targetServiceAccount: targetAccount,
+              permission: impersonationPermission,
+            },
+          }
+        )
+      );
     }
   } catch (error) {
     const err = error as Error & { code?: number };

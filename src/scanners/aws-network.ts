@@ -3,7 +3,7 @@
  * VPC, Security Groups, NACLs, Flow Logs, Transit Gateway
  */
 
-import type { Finding, ScanOptions, Severity } from '../types';
+import type { Finding, ScanOptions } from '../types';
 
 interface EC2Client {
   send: (command: unknown) => Promise<unknown>;

@@ -4,7 +4,8 @@
  * CIS AWS Foundations Benchmark v3.0+ controls
  */
 
-import type { Finding, ScanOptions, Severity } from '../types';
+import type { Finding, ScanOptions } from '../types';
+// Utils imported as needed
 
 interface SCPStatement {
   Effect: 'Allow' | 'Deny';
