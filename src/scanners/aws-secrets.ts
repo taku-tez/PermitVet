@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions } from '../types';
+import { logProgress, logError, handleScanError } from '../utils';
 
 interface Secret {
   Name: string;
@@ -69,43 +70,42 @@ export async function scanAWSSecrets(options: ScanOptions = {}): Promise<Finding
 
   try {
     const config = options.profile ? { profile: options.profile } : {};
+    const verbose = options.verbose !== false;
 
     // 1. Secrets Manager
-    console.log('  Scanning Secrets Manager...');
+    logProgress('Scanning Secrets Manager...', verbose);
     const secretsFindings = await scanSecretsManager(config);
     findings.push(...secretsFindings);
 
     // 2. KMS Keys
-    console.log('  Scanning KMS keys...');
+    logProgress('Scanning KMS keys...', verbose);
     const kmsFindings = await scanKMSKeys(config);
     findings.push(...kmsFindings);
 
     // 3. Lambda Environment Variables
-    console.log('  Scanning Lambda environment variables...');
+    logProgress('Scanning Lambda environment variables...', verbose);
     const lambdaFindings = await scanLambdaSecrets(config);
     findings.push(...lambdaFindings);
 
     // 4. SSM Parameter Store
-    console.log('  Scanning SSM Parameter Store...');
+    logProgress('Scanning SSM Parameter Store...', verbose);
     const ssmFindings = await scanSSMParameters(config);
     findings.push(...ssmFindings);
 
     // 5. SNS Topic Policies
-    console.log('  Scanning SNS topic policies...');
+    logProgress('Scanning SNS topic policies...', verbose);
     const snsFindings = await scanSNSPolicies(config);
     findings.push(...snsFindings);
 
     // 6. SQS Queue Policies
-    console.log('  Scanning SQS queue policies...');
+    logProgress('Scanning SQS queue policies...', verbose);
     const sqsFindings = await scanSQSPolicies(config);
     findings.push(...sqsFindings);
   } catch (error) {
-    const err = error as Error & { code?: string; name?: string };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('AWS SDK not installed.');
-    } else if (err.name === 'CredentialsProviderError') {
-      // Skip if no credentials
-    } else {
+    const result = handleScanError(error, { provider: 'aws', operation: 'secrets scan' });
+    if (result.type === 'sdk_not_installed') {
+      logError(result.message);
+    } else if (result.shouldThrow) {
       throw error;
     }
   }

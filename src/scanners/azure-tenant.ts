@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions } from '../types';
+import { logProgress, logError, handleScanError } from '../utils';
 
 // Azure SDK types
 interface ManagementGroup {
@@ -71,35 +72,37 @@ export async function scanAzureTenant(options: ScanOptions = {}): Promise<Findin
     const managementGroupId = options.managementGroup;
     const allSubscriptions = options.allSubscriptions;
 
+    const verbose = options.verbose !== false;
+
     if (tenantId || managementGroupId) {
       // Tenant/Management Group scan
       const mgId = managementGroupId || tenantId; // Root MG often has tenant ID
-      console.log(`  Scanning management group: ${mgId}...`);
+      logProgress(`Scanning management group: ${mgId}...`, verbose);
 
       // 1. Management Group IAM Policy
-      console.log('  Checking management group role assignments...');
+      logProgress('Checking management group role assignments...', verbose);
       const mgIamFindings = await scanManagementGroupIAM(credential, mgId!);
       findings.push(...mgIamFindings);
 
       // 2. Management Group Hierarchy Analysis
-      console.log('  Analyzing management group hierarchy...');
+      logProgress('Analyzing management group hierarchy...', verbose);
       const hierarchyFindings = await analyzeManagementGroupHierarchy(credential, mgId!);
       findings.push(...hierarchyFindings);
 
       // 3. Tenant-level Custom Role Definitions
-      console.log('  Scanning tenant custom roles...');
+      logProgress('Scanning tenant custom roles...', verbose);
       const roleFindings = await scanTenantCustomRoles(credential, mgId!);
       findings.push(...roleFindings);
 
       // 4. All subscriptions (if requested)
       if (allSubscriptions) {
-        console.log('  Scanning all subscriptions...');
+        logProgress('Scanning all subscriptions...', verbose);
         const subFindings = await scanAllSubscriptions(credential, mgId!);
         findings.push(...subFindings);
       }
     } else if (allSubscriptions) {
       // Scan all accessible subscriptions without MG context
-      console.log('  Scanning all accessible subscriptions...');
+      logProgress('Scanning all accessible subscriptions...', verbose);
       const subFindings = await scanAccessibleSubscriptions(credential);
       findings.push(...subFindings);
     } else {
@@ -113,8 +116,9 @@ export async function scanAzureTenant(options: ScanOptions = {}): Promise<Findin
     }
   } catch (error) {
     const err = error as Error & { code?: string; statusCode?: number };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error(
+    const result = handleScanError(error, { provider: 'azure', operation: 'tenant scan' });
+    if (result.type === 'sdk_not_installed') {
+      logError(
         'Azure SDK not installed. Run: npm install @azure/identity @azure/arm-managementgroups @azure/arm-authorization @azure/arm-subscriptions'
       );
     } else if (err.statusCode === 403 || err.code === 'AuthorizationFailed') {
@@ -125,7 +129,7 @@ export async function scanAzureTenant(options: ScanOptions = {}): Promise<Findin
         message: 'Unable to access tenant-level resources',
         recommendation: 'Ensure scanner has Management Group Reader role at root',
       });
-    } else {
+    } else if (result.shouldThrow) {
       throw error;
     }
   }
@@ -430,7 +434,7 @@ async function scanAllSubscriptions(
       descendants.push(desc as Subscription);
     }
 
-    console.log(`  Found ${descendants.length} subscriptions...`);
+    logProgress(`Found ${descendants.length} subscriptions...`);
 
     // Cross-subscription analysis
     const principalAccess = new Map<string, SubscriptionAccess[]>();
@@ -538,7 +542,7 @@ async function scanAccessibleSubscriptions(
       subscriptions.push(sub as Subscription);
     }
 
-    console.log(`  Found ${subscriptions.length} accessible subscriptions...`);
+    logProgress(`Found ${subscriptions.length} accessible subscriptions...`);
 
     const principalAccess = new Map<string, SubscriptionAccess[]>();
 

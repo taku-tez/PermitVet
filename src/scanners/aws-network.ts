@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions } from '../types';
+import { logProgress, logError, handleScanError } from '../utils';
 
 interface EC2Client {
   send: (command: unknown) => Promise<unknown>;
@@ -95,42 +96,42 @@ export async function scanAWSNetwork(options: ScanOptions = {}): Promise<Finding
 
     const client = new EC2Client(config) as any;
 
+    const verbose = options.verbose !== false;
+
     // 1. VPC Configuration
-    console.log('  Scanning VPCs...');
+    logProgress('Scanning VPCs...', verbose);
     const vpcFindings = await scanVPCs(client);
     findings.push(...vpcFindings);
 
     // 2. Security Groups
-    console.log('  Scanning Security Groups...');
+    logProgress('Scanning Security Groups...', verbose);
     const sgFindings = await scanSecurityGroups(client);
     findings.push(...sgFindings);
 
     // 3. Network ACLs
-    console.log('  Scanning Network ACLs...');
+    logProgress('Scanning Network ACLs...', verbose);
     const naclFindings = await scanNetworkACLs(client);
     findings.push(...naclFindings);
 
     // 4. VPC Flow Logs
-    console.log('  Scanning VPC Flow Logs...');
+    logProgress('Scanning VPC Flow Logs...', verbose);
     const flowLogFindings = await scanFlowLogs(client);
     findings.push(...flowLogFindings);
 
     // 5. VPC Endpoints
-    console.log('  Scanning VPC Endpoints...');
+    logProgress('Scanning VPC Endpoints...', verbose);
     const endpointFindings = await scanVPCEndpoints(client);
     findings.push(...endpointFindings);
 
     // 6. Internet Gateways
-    console.log('  Scanning Internet Gateways...');
+    logProgress('Scanning Internet Gateways...', verbose);
     const igwFindings = await scanInternetGateways(client);
     findings.push(...igwFindings);
   } catch (error) {
-    const err = error as Error & { code?: string; name?: string };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error('AWS SDK not installed.');
-    } else if (err.name === 'CredentialsProviderError') {
-      // Skip if no credentials
-    } else {
+    const result = handleScanError(error, { provider: 'aws', operation: 'network scan' });
+    if (result.type === 'sdk_not_installed') {
+      logError(result.message);
+    } else if (result.shouldThrow) {
       throw error;
     }
   }

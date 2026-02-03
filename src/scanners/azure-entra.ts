@@ -4,6 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
+import { logProgress, logError, handleScanError } from '../utils';
 
 // Graph API types
 interface DirectoryRole {
@@ -120,45 +121,47 @@ export async function scanEntraID(_options: ScanOptions = {}): Promise<Finding[]
     });
 
     const graphClient = Client.initWithMiddleware({ authProvider }) as GraphClient;
+    const verbose = _options.verbose !== false;
 
     // 1. Scan Directory Roles (Global Admin, etc.)
-    console.log('  Scanning Entra ID directory roles...');
+    logProgress('Scanning Entra ID directory roles...', verbose);
     const roleFindings = await scanDirectoryRoles(graphClient);
     findings.push(...roleFindings);
 
     // 2. Scan PIM Role Assignments
-    console.log('  Scanning PIM role assignments...');
+    logProgress('Scanning PIM role assignments...', verbose);
     const pimFindings = await scanPIMRoleAssignments(graphClient);
     findings.push(...pimFindings);
 
     // 3. Scan PIM Settings
-    console.log('  Scanning PIM settings...');
+    logProgress('Scanning PIM settings...', verbose);
     const pimSettingsFindings = await scanPIMSettings(graphClient);
     findings.push(...pimSettingsFindings);
 
     // 4. Scan App Registrations
-    console.log('  Scanning app registrations...');
+    logProgress('Scanning app registrations...', verbose);
     const appFindings = await scanAppRegistrations(graphClient);
     findings.push(...appFindings);
 
     // 5. Scan Service Principals
-    console.log('  Scanning service principals...');
+    logProgress('Scanning service principals...', verbose);
     const spFindings = await scanServicePrincipals(graphClient);
     findings.push(...spFindings);
 
     // 6. Scan Conditional Access Policies
-    console.log('  Scanning conditional access policies...');
+    logProgress('Scanning conditional access policies...', verbose);
     const caFindings = await scanConditionalAccess(graphClient);
     findings.push(...caFindings);
 
     // 7. Scan Guest Users
-    console.log('  Scanning guest users...');
+    logProgress('Scanning guest users...', verbose);
     const guestFindings = await scanGuestUsers(graphClient);
     findings.push(...guestFindings);
   } catch (error) {
     const err = error as Error & { code?: string };
-    if (err.code === 'MODULE_NOT_FOUND') {
-      console.error(
+    const result = handleScanError(error, { provider: 'azure', operation: 'Entra ID scan' });
+    if (result.type === 'sdk_not_installed') {
+      logError(
         'Microsoft Graph SDK not installed. Run: npm install @microsoft/microsoft-graph-client @azure/identity'
       );
     } else if (err.code === 'Authorization_RequestDenied') {
@@ -169,7 +172,7 @@ export async function scanEntraID(_options: ScanOptions = {}): Promise<Finding[]
         message: 'Unable to access Entra ID. Ensure app has Directory.Read.All permission.',
         recommendation: 'Grant Directory.Read.All and RoleManagement.Read.All to the scanner app',
       });
-    } else {
+    } else if (result.shouldThrow) {
       throw error;
     }
   }
