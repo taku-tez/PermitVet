@@ -6,6 +6,8 @@
  */
 
 const { scan, analyzePrivesc, version } = require('../src/index.js');
+const { loadConfig, mergeOptions, generateExampleConfig } = require('../src/config.js');
+const fs = require('fs');
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -44,6 +46,9 @@ Options:
   --format <type>        Output format (table, json, sarif, html, compliance)
   --output <file>        Output file path
   --quiet                Suppress non-essential output
+  --verbose              Enable verbose output with progress details
+  --config <path>        Path to config file (default: .permitvet.yml)
+  --init-config          Generate example .permitvet.yml
   --no-enhanced          Skip enhanced checks (Access Analyzer, IAM Recommender)
 
 Examples:
@@ -87,6 +92,23 @@ async function main() {
     process.exit(0);
   }
 
+  // Handle --init-config
+  const initConfigIndex = args.indexOf('--init-config');
+  if (initConfigIndex !== -1) {
+    const configContent = generateExampleConfig();
+    const configPath = '.permitvet.yml';
+    
+    if (fs.existsSync(configPath)) {
+      console.error(`Error: ${configPath} already exists`);
+      process.exit(1);
+    }
+    
+    fs.writeFileSync(configPath, configContent);
+    console.log(`✅ Created ${configPath}`);
+    console.log('Edit this file to customize PermitVet behavior.');
+    process.exit(0);
+  }
+
   if (command === 'scan') {
     const provider = args[1];
     if (!provider) {
@@ -94,10 +116,21 @@ async function main() {
       process.exit(1);
     }
 
-    const options = parseOptions(args.slice(2));
+    let options = parseOptions(args.slice(2));
+    
+    // Load config file
+    const fileConfig = loadConfig(options.configPath ? require('path').dirname(options.configPath) : process.cwd());
+    if (fileConfig) {
+      if (options.verbose) {
+        console.log('📄 Loaded configuration from file');
+      }
+      options = mergeOptions(options, fileConfig);
+    }
     
     try {
-      console.log(`\n🦅 PermitVet v${version}\n`);
+      if (!options.quiet) {
+        console.log(`\n🦅 PermitVet v${version}\n`);
+      }
       const results = await scan(provider, options);
       process.exit(results.critical > 0 ? 1 : 0);
     } catch (error) {
@@ -196,6 +229,12 @@ function parseOptions(args) {
       options.enhanced = false;
     } else if (arg === '--debug') {
       options.debug = true;
+    } else if (arg === '--verbose') {
+      options.verbose = true;
+    } else if (arg === '--config' && args[i + 1]) {
+      options.configPath = args[++i];
+    } else if (arg === '--init-config') {
+      options.initConfig = true;
     }
   }
   return options;

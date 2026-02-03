@@ -22,8 +22,9 @@ const { scanKubernetesRBAC } = require('./scanners/kubernetes.js');
 const { detectPrivescPaths, buildAttackGraph, AWS_PRIVESC_TECHNIQUES, AZURE_PRIVESC_TECHNIQUES, GCP_PRIVESC_TECHNIQUES } = require('./scanners/privesc-detector.js');
 const { mapToCompliance, generateComplianceSummary, generateSARIF, generateHTMLReport } = require('./compliance.js');
 const { Reporter } = require('./reporter.js');
+const { applyConfig, checkThresholds } = require('./config.js');
 
-const version = '0.11.0';
+const version = '0.12.0';
 
 /**
  * Scan cloud provider for IAM permission issues
@@ -250,11 +251,25 @@ async function scan(provider, options = {}) {
     }
   }
 
+  // Apply config file rules (exclude, rule overrides)
+  findings = applyConfig(findings, options);
+  
   // Map findings to compliance frameworks
   findings = findings.map(mapToCompliance);
 
   // Generate output based on format
   const summary = reporter.report(findings, options);
+  
+  // Check thresholds if configured
+  if (options.thresholds) {
+    const { exceeded, violations } = checkThresholds(summary, options.thresholds);
+    if (exceeded) {
+      console.log('\n⚠️ Threshold violations:');
+      for (const v of violations) {
+        console.log(`  - ${v}`);
+      }
+    }
+  }
   
   // Additional output formats
   if (options.format === 'sarif') {
