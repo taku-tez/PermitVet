@@ -40,7 +40,7 @@ import {
 import { Reporter } from './reporter';
 import { applyConfig, checkThresholds } from './config';
 
-export const version = '0.15.0';
+export const version = '0.15.1';
 
 interface ExtendedScanOptions extends ScanOptions {
   aws?: boolean;
