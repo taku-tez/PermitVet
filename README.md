@@ -2,9 +2,11 @@
 
 > **CIEM** (Cloud Infrastructure Entitlement Management) - Pure IAM Security Scanner
 
+[![npm version](https://img.shields.io/npm/v/@permitvet/cli.svg)](https://www.npmjs.com/package/@permitvet/cli)
 [![CI](https://github.com/taku-tez/PermitVet/actions/workflows/ci.yml/badge.svg)](https://github.com/taku-tez/PermitVet/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 
 ---
 
@@ -333,6 +335,7 @@ console.log(`CIS Score: ${compliance.cis.score}%`);
 - [x] SARIF/HTML reporting
 - [x] **TypeScript migration** (v0.15.0)
 - [x] Configuration file support (v0.12.0)
+- [x] **Codebase refactoring** (v0.15.3) - ESLint TypeScript, common utilities
 - [ ] Azure Entra ID / PIM integration
 - [ ] Policy recommendations engine
 - [ ] Attack graph visualization (D3.js)
@@ -347,9 +350,33 @@ console.log(`CIS Score: ${compliance.cis.score}%`);
 
 ---
 
+## Development
+
+```bash
+# Clone
+git clone https://github.com/taku-tez/PermitVet.git
+cd PermitVet
+
+# Install
+npm install
+
+# Build (TypeScript → JavaScript)
+npm run build
+
+# Test (79 tests)
+npm test
+
+# Lint
+npm run lint
+```
+
+> **Note:** Build requires ~4GB heap for TypeScript compilation. This is handled automatically via `NODE_OPTIONS` in the build script.
+
+---
+
 ## Contributing
 
-PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+PRs welcome! See [docs/contributing.md](docs/contributing.md).
 
 ---
 
