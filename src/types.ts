@@ -67,11 +67,7 @@ export interface ThresholdConfig {
 }
 
 /** Rule configuration */
-export type RuleConfig =
-  | 'off'
-  | 'warn'
-  | 'error'
-  | { severity: Severity | 'off' };
+export type RuleConfig = 'off' | 'warn' | 'error' | { severity: Severity | 'off' };
 
 /** Scan results summary */
 export interface ScanSummary {
@@ -79,7 +75,12 @@ export interface ScanSummary {
   critical: number;
   warning: number;
   info: number;
-  findings: Finding[];
+}
+
+/** Report options */
+export interface ReportOptions {
+  format?: 'table' | 'json' | 'sarif' | 'html' | 'compliance';
+  output?: string;
 }
 
 /** Privilege escalation technique */
@@ -116,7 +117,7 @@ export interface SARIFRun {
       name: string;
       version: string;
       informationUri: string;
-      rules: SARIFRule[];
+      rules?: SARIFRule[];
     };
   };
   results: SARIFResult[];
@@ -133,7 +134,7 @@ export interface SARIFRule {
 
 export interface SARIFResult {
   ruleId: string;
-  level: string;
+  level: 'error' | 'warning' | 'note';
   message: { text: string };
   locations: {
     physicalLocation: {

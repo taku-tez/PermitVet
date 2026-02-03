@@ -1,8 +1,8 @@
 {
   "name": "@permitvet/cli",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Pure CIEM (Cloud Infrastructure Entitlement Management) - IAM security scanner for AWS, Azure, GCP, OCI, Kubernetes",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "bin": {
     "permitvet": "./bin/permitvet.js"
   },
@@ -13,10 +13,12 @@
     "lint": "eslint src/ bin/ test/",
     "start": "node bin/permitvet.js",
     "prepare": "husky",
-    "format": "prettier --write \"src/**/*.js\" \"bin/**/*.js\" \"test/**/*.js\"",
+    "postinstall": "npm run build || true",
+    "format": "prettier --write \"src/**/*.{js,ts}\" \"bin/**/*.js\" \"test/**/*.js\"",
     "lint:fix": "eslint --fix src/ bin/ test/",
     "build": "tsc",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "iam",
@@ -78,7 +80,7 @@
     "typescript": "^5.9.3"
   },
   "lint-staged": {
-    "*.js": [
+    "*.{js,ts}": [
       "eslint --fix",
       "prettier --write"
     ],
@@ -86,5 +88,5 @@
       "prettier --write"
     ]
   },
-  "types": "src/index.d.ts"
+  "types": "dist/index.d.ts"
 }

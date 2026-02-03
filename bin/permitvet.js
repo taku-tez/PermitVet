@@ -5,8 +5,9 @@
  * Cloud IAM Permission Auditor - Wiz-level CIEM
  */
 
-const { scan, analyzePrivesc, analyzeRBACDeep, version } = require('../src/index.js');
-const { loadConfig, mergeOptions, generateExampleConfig } = require('../src/config.js');
+// Use compiled TypeScript from dist/
+const { scan, analyzePrivesc, analyzeRBACDeep, version } = require('../dist/index.js');
+const { loadConfig, mergeOptions, generateExampleConfig } = require('../dist/config.js');
 const fs = require('fs');
 
 const args = process.argv.slice(2);
