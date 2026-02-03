@@ -652,13 +652,13 @@ function mapSeverityToSARIF(severity: Severity): string {
 }
 
 export interface SARIFOptions {
-  version?: string;
+  version: string;
 }
 
 /**
  * Generate SARIF output
  */
-export function generateSARIF(findings: Finding[], options: SARIFOptions = {}): SARIFOutput {
+export function generateSARIF(findings: Finding[], options: SARIFOptions): SARIFOutput {
   const sarif: SARIFOutput = {
     $schema:
       'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
@@ -668,7 +668,7 @@ export function generateSARIF(findings: Finding[], options: SARIFOptions = {}): 
         tool: {
           driver: {
             name: 'PermitVet',
-            version: options.version || '0.13.0',
+            version: options.version,
             informationUri: 'https://github.com/taku-tez/PermitVet',
             rules: [],
           },

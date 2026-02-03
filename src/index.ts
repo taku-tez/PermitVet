@@ -59,7 +59,7 @@ export async function scan(
   provider: string,
   options: ExtendedScanOptions = {}
 ): Promise<ScanSummary> {
-  const reporter = new Reporter(options);
+  const reporter = new Reporter({ quiet: options.quiet, version });
 
   let findings: Finding[] = [];
 
