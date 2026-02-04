@@ -12,7 +12,7 @@
 
 ## Why PermitVet?
 
-Enterprise CIEM tools like Wiz cost $250K+ annually. PermitVet gives you **CIEM capabilities for free**:
+Open-source, self-hosted **CIEM capabilities for free**:
 
 - 🔐 **IAM-focused** — Pure entitlement management, no CSPM noise
 - ⚠️ **Privilege escalation detection** — 70+ attack techniques (PMapper/Pacu-level)
@@ -304,22 +304,6 @@ console.log(`Detected ${paths.length} escalation paths`);
 const compliance = getComplianceSummary(results.findings);
 console.log(`CIS Score: ${compliance.cis.score}%`);
 ```
-
----
-
-## vs. Wiz / Orca / Lacework
-
-| Feature           | PermitVet | Wiz       | Orca      |
-| ----------------- | --------- | --------- | --------- |
-| Price             | **Free**  | $250K+/yr | $100K+/yr |
-| Multi-cloud       | ✅        | ✅        | ✅        |
-| CIS Checks        | ✅        | ✅        | ✅        |
-| Privesc Detection | ✅        | ✅        | ✅        |
-| Access Analyzer   | ✅        | ✅        | ❌        |
-| IAM Recommender   | ✅        | ✅        | ❌        |
-| SARIF Output      | ✅        | ❌        | ❌        |
-| Self-hosted       | ✅        | ❌        | ❌        |
-| Open Source       | ✅        | ❌        | ❌        |
 
 ---
 

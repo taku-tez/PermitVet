@@ -1,6 +1,6 @@
 /**
  * PermitVet - Cloud IAM Permission Auditor
- * Wiz-level CIEM capabilities for multi-cloud environments
+ * Pure CIEM capabilities for multi-cloud environments
  */
 
 import * as fs from 'fs';
