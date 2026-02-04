@@ -4,7 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
-import { createFinding, handleScanError, logProgress, logError } from '../utils';
+import { createFinding, handleScanError, logProgress, logError, logDebug } from '../utils';
 
 // GCP types
 interface IAMPolicy {
@@ -339,8 +339,8 @@ async function scanServiceAccounts(iam: any, projectId: string): Promise<Finding
             }
           }
         }
-      } catch {
-        // Skip if unable to get SA policy
+      } catch (e) {
+        logDebug('Skip if unable to get SA policy', e);
       }
     }
   } catch (error) {

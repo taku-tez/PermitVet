@@ -5,7 +5,7 @@
  */
 
 import type { Finding, ScanOptions } from '../types';
-import { createFinding, handleScanError, logProgress, logError } from '../utils';
+import { createFinding, handleScanError, logProgress, logError, logDebug } from '../utils';
 
 interface SCPStatement {
   Effect: 'Allow' | 'Deny';
@@ -180,7 +180,8 @@ async function analyzeOrganizationsSCPs(orgClient: OrganizationsClient): Promise
             Policy?: { Content?: string };
           };
           return detail.Policy?.Content || '';
-        } catch {
+        } catch (e) {
+          logDebug(`Failed to describe SCP ${p.Id}`, e);
           return '';
         }
       })
@@ -245,13 +246,23 @@ async function analyzePermissionBoundaries(iamClient: IAMClient): Promise<Findin
     const { ListUsersCommand, ListRolesCommand, GetUserCommand, GetRoleCommand } =
       await import('@aws-sdk/client-iam');
 
-    // Check users without permission boundaries
-    const usersResponse = (await iamClient.send(new ListUsersCommand({}))) as {
-      Users?: Array<{ UserName: string }>;
-    };
+    // Check users without permission boundaries (with pagination)
+    const users: Array<{ UserName: string }> = [];
+    let usersMarker: string | undefined;
+    do {
+      const usersResponse = (await iamClient.send(
+        new ListUsersCommand({ Marker: usersMarker })
+      )) as {
+        Users?: Array<{ UserName: string }>;
+        IsTruncated?: boolean;
+        Marker?: string;
+      };
+      users.push(...(usersResponse.Users || []));
+      usersMarker = usersResponse.IsTruncated ? usersResponse.Marker : undefined;
+    } while (usersMarker);
     let usersWithoutBoundary = 0;
 
-    for (const user of usersResponse.Users || []) {
+    for (const user of users) {
       const userDetail = (await iamClient.send(
         new GetUserCommand({ UserName: user.UserName })
       )) as { User?: { PermissionsBoundary?: unknown } };
@@ -260,7 +271,7 @@ async function analyzePermissionBoundaries(iamClient: IAMClient): Promise<Findin
       }
     }
 
-    const totalUsers = usersResponse.Users?.length || 0;
+    const totalUsers = users.length;
     if (usersWithoutBoundary > 0 && totalUsers > 5) {
       const percentage = Math.round((usersWithoutBoundary / totalUsers) * 100);
       findings.push(
@@ -274,13 +285,23 @@ async function analyzePermissionBoundaries(iamClient: IAMClient): Promise<Findin
       );
     }
 
-    // Check roles created by users (should have boundaries)
-    const rolesResponse = (await iamClient.send(new ListRolesCommand({}))) as {
-      Roles?: Array<{ RoleName: string; Path?: string; Arn?: string }>;
-    };
+    // Check roles created by users (should have boundaries) - with pagination
+    const roles: Array<{ RoleName: string; Path?: string; Arn?: string }> = [];
+    let rolesMarker: string | undefined;
+    do {
+      const rolesResponse = (await iamClient.send(
+        new ListRolesCommand({ Marker: rolesMarker })
+      )) as {
+        Roles?: Array<{ RoleName: string; Path?: string; Arn?: string }>;
+        IsTruncated?: boolean;
+        Marker?: string;
+      };
+      roles.push(...(rolesResponse.Roles || []));
+      rolesMarker = rolesResponse.IsTruncated ? rolesResponse.Marker : undefined;
+    } while (rolesMarker);
     let customRolesWithoutBoundary = 0;
 
-    for (const role of rolesResponse.Roles || []) {
+    for (const role of roles) {
       // Skip service-linked and AWS-created roles
       if (
         role.Path?.startsWith('/aws-service-role/') ||
@@ -333,13 +354,25 @@ async function analyzeCrossAccountRoles(iamClient: IAMClient): Promise<Finding[]
     };
     const currentAccountId = identity.Account;
 
-    const rolesResponse = (await iamClient.send(new ListRolesCommand({}))) as {
-      Roles?: Array<{ RoleName: string; Path?: string; AssumeRolePolicyDocument?: string }>;
-    };
+    // Paginate through all roles
+    const allRoles: Array<{ RoleName: string; Path?: string; AssumeRolePolicyDocument?: string }> =
+      [];
+    let roleMarker: string | undefined;
+    do {
+      const rolesResponse = (await iamClient.send(
+        new ListRolesCommand({ Marker: roleMarker })
+      )) as {
+        Roles?: Array<{ RoleName: string; Path?: string; AssumeRolePolicyDocument?: string }>;
+        IsTruncated?: boolean;
+        Marker?: string;
+      };
+      allRoles.push(...(rolesResponse.Roles || []));
+      roleMarker = rolesResponse.IsTruncated ? rolesResponse.Marker : undefined;
+    } while (roleMarker);
 
     const externalAccounts = new Set<string>();
 
-    for (const role of rolesResponse.Roles || []) {
+    for (const role of allRoles) {
       // Skip AWS service roles
       if (role.Path?.startsWith('/aws-service-role/')) continue;
 
@@ -391,8 +424,8 @@ async function analyzeCrossAccountRoles(iamClient: IAMClient): Promise<Finding[]
             }
           }
         }
-      } catch {
-        // Skip roles with invalid trust policies
+      } catch (e) {
+        logDebug(`Failed to parse trust policy for role ${role.RoleName}`, e);
       }
     }
 
@@ -426,10 +459,20 @@ async function analyzeEffectivePermissions(iamClient: IAMClient): Promise<Findin
     const { ListUsersCommand, SimulatePrincipalPolicyCommand } =
       await import('@aws-sdk/client-iam');
 
-    // Get users and analyze their effective permissions
-    const usersResponse = (await iamClient.send(new ListUsersCommand({}))) as {
-      Users?: Array<{ UserName: string; Arn: string }>;
-    };
+    // Get users with pagination and analyze their effective permissions
+    const allUsers: Array<{ UserName: string; Arn: string }> = [];
+    let userMarker: string | undefined;
+    do {
+      const usersResponse = (await iamClient.send(
+        new ListUsersCommand({ Marker: userMarker })
+      )) as {
+        Users?: Array<{ UserName: string; Arn: string }>;
+        IsTruncated?: boolean;
+        Marker?: string;
+      };
+      allUsers.push(...(usersResponse.Users || []));
+      userMarker = usersResponse.IsTruncated ? usersResponse.Marker : undefined;
+    } while (userMarker);
 
     // Critical actions to check
     const criticalActions = [
@@ -446,8 +489,8 @@ async function analyzeEffectivePermissions(iamClient: IAMClient): Promise<Findin
     ];
 
     // Sample a few users (full analysis would be too slow)
-    const sampleSize = Math.min(5, usersResponse.Users?.length || 0);
-    const sampledUsers = usersResponse.Users?.slice(0, sampleSize) || [];
+    const sampleSize = Math.min(5, allUsers.length);
+    const sampledUsers = allUsers.slice(0, sampleSize);
 
     for (const user of sampledUsers) {
       try {
@@ -499,8 +542,8 @@ async function analyzeEffectivePermissions(iamClient: IAMClient): Promise<Findin
             )
           );
         }
-      } catch {
-        // Simulation might fail for some users
+      } catch (e) {
+        logDebug(`Policy simulation failed for user ${user.UserName}`, e);
       }
     }
   } catch (error) {

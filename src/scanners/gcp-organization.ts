@@ -4,7 +4,7 @@
  */
 
 import type { Finding, ScanOptions } from '../types';
-import { createFinding, handleScanError, logProgress, logError } from '../utils';
+import { createFinding, handleScanError, logProgress, logError, logDebug } from '../utils';
 
 // GCP types
 interface IAMPolicy {
@@ -416,8 +416,8 @@ async function scanOrganizationRoles(iam: any, organizationId: string): Promise<
             )
           );
         }
-      } catch {
-        // Skip if can't get role details
+      } catch (e) {
+        logDebug("Skip if can't get role details", e);
       }
     }
 
@@ -498,8 +498,8 @@ async function analyzeFolderHierarchy(
             );
           }
         }
-      } catch {
-        // Skip if can't read folder policy
+      } catch (e) {
+        logDebug('Operation skipped due to error', e);
       }
 
       // Recursively check sub-folders
@@ -574,8 +574,8 @@ async function scanAllProjects(cloudresourcemanager: any, parent: string): Promi
             }
           }
         }
-      } catch {
-        // Skip projects we can't access
+      } catch (e) {
+        logDebug('Operation skipped due to error', e);
       }
     }
 

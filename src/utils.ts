@@ -163,6 +163,17 @@ export function logError(message: string): void {
 }
 
 /**
+ * Log debug message (only when DEBUG=permitvet or verbose mode)
+ * Use this for gracefully handled errors that shouldn't stop execution
+ */
+export function logDebug(message: string, error?: unknown): void {
+  if (process.env.DEBUG?.includes('permitvet') || process.env.PERMITVET_VERBOSE) {
+    const errMsg = error instanceof Error ? `: ${error.message}` : '';
+    console.error(`[DEBUG] ${message}${errMsg}`);
+  }
+}
+
+/**
  * Common severity thresholds for different issue types
  */
 export const SeverityThresholds = {

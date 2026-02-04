@@ -1,6 +1,6 @@
 {
   "name": "@permitvet/cli",
-  "version": "0.15.3",
+  "version": "0.15.4",
   "description": "Pure CIEM (Cloud Infrastructure Entitlement Management) - IAM security scanner for AWS, Azure, GCP, OCI, Kubernetes",
   "main": "dist/index.js",
   "bin": {

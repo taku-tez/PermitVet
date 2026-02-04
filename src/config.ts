@@ -74,10 +74,22 @@ export function loadConfig(configPathOrDir: string = process.cwd()): PermitVetCo
 
 /**
  * Load configuration from a specific file path
+ *
+ * SECURITY NOTE: .js config files are executed via require(), which allows
+ * arbitrary code execution. Only use .js configs from trusted sources.
+ * Prefer .json or .yaml configs for better security.
  */
 export function loadConfigFile(filepath: string): PermitVetConfig | null {
   try {
     if (filepath.endsWith('.js')) {
+      // Security warning for JS config files
+      if (process.env.PERMITVET_ALLOW_JS_CONFIG !== 'true') {
+        console.warn(
+          `⚠️  Security Warning: Loading JavaScript config file: ${filepath}\n` +
+            `   JS config files can execute arbitrary code. Set PERMITVET_ALLOW_JS_CONFIG=true to suppress this warning.\n` +
+            `   Consider using .json or .yaml config files instead.`
+        );
+      }
       return require(filepath) as PermitVetConfig;
     } else if (filepath.endsWith('.json')) {
       return JSON.parse(fs.readFileSync(filepath, 'utf-8')) as PermitVetConfig;

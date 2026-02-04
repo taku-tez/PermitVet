@@ -4,7 +4,7 @@
  */
 
 import type { Finding, ScanOptions } from '../types';
-import { logProgress, logError, handleScanError } from '../utils';
+import { logProgress, logError, logDebug, handleScanError } from '../utils';
 
 interface Secret {
   Name: string;
@@ -216,8 +216,8 @@ async function scanSecretsManager(config: { profile?: string }): Promise<Finding
             }
           }
         }
-      } catch {
-        // Skip if can't get details
+      } catch (e) {
+        logDebug(`Failed to get details for secret ${secret.Name}`, e);
       }
     }
   } catch (error) {
@@ -303,8 +303,8 @@ async function scanKMSKeys(config: { profile?: string }): Promise<Finding[]> {
                 cis: '3.8',
               });
             }
-          } catch {
-            // Skip if can't check rotation
+          } catch (e) {
+            logDebug("Skip if can't check rotation", e);
           }
         }
 
@@ -336,11 +336,11 @@ async function scanKMSKeys(config: { profile?: string }): Promise<Finding[]> {
               }
             }
           }
-        } catch {
-          // Skip if can't get policy
+        } catch (e) {
+          logDebug('Operation skipped due to error', e);
         }
-      } catch {
-        // Skip keys we can't describe
+      } catch (e) {
+        logDebug('Operation skipped due to error', e);
       }
     }
   } catch (error) {
@@ -599,8 +599,8 @@ async function scanSNSPolicies(config: { profile?: string }): Promise<Finding[]>
             recommendation: 'Enable SSE for sensitive topics',
           });
         }
-      } catch {
-        // Skip topics we can't access
+      } catch (e) {
+        logDebug('Operation skipped due to error', e);
       }
     }
   } catch (error) {
@@ -680,8 +680,8 @@ async function scanSQSPolicies(config: { profile?: string }): Promise<Finding[]>
             recommendation: 'Enable SSE for sensitive queues',
           });
         }
-      } catch {
-        // Skip queues we can't access
+      } catch (e) {
+        logDebug('Operation skipped due to error', e);
       }
     }
   } catch (error) {

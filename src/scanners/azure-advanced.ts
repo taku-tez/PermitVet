@@ -4,7 +4,7 @@
  */
 
 import type { Finding, ScanOptions } from '../types';
-import { createFinding, handleScanError, logProgress, logError } from '../utils';
+import { createFinding, handleScanError, logProgress, logError, logDebug } from '../utils';
 
 // Azure SDK types
 interface ManagementGroup {
@@ -178,8 +178,8 @@ async function analyzeManagementGroups(
             );
           }
         }
-      } catch {
-        // Skip if can't get details
+      } catch (e) {
+        logDebug("Skip if can't get details", e);
       }
     }
   } catch (error) {

@@ -5,7 +5,7 @@
  */
 
 import type { ScanOptions } from '../types';
-import { logProgress, logError } from '../utils';
+import { logProgress, logError, logDebug } from '../utils';
 
 /** JIT/Temporary access recommendation */
 export interface JITRecommendation {
@@ -201,8 +201,8 @@ export async function analyzeAWSRBAC(options: RBACOptions = {}): Promise<RBACAna
           roleAnalysis.utilizationLevel = 'never_used';
           results.summary.underutilizedRoles++;
         }
-      } catch {
-        // Skip if unable to get role details
+      } catch (_e) {
+        logDebug('Skip if unable to get role details', _e);
       }
 
       // Get attached policies and analyze permissions
@@ -284,8 +284,8 @@ export async function analyzeAWSRBAC(options: RBACOptions = {}): Promise<RBACAna
                 }
               }
             }
-          } catch {
-            // Skip if unable to get policy details
+          } catch (_e) {
+            logDebug('Operation skipped due to error', _e);
           }
         }
 
@@ -322,12 +322,12 @@ export async function analyzeAWSRBAC(options: RBACOptions = {}): Promise<RBACAna
                 results.summary.unusedPermissionCount++;
               }
             }
-          } catch {
-            // Skip
+          } catch (_e) {
+            logDebug('Skip', _e);
           }
         }
-      } catch {
-        // Skip if unable to analyze policies
+      } catch (_e) {
+        logDebug('Operation skipped due to error', _e);
       }
 
       // Generate JIT/temporary access recommendation
@@ -624,8 +624,8 @@ export async function analyzeGCPRBAC(options: RBACOptions = {}): Promise<RBACAna
           });
         }
       }
-    } catch {
-      // IAM Recommender may not be available
+    } catch (_e) {
+      logDebug('IAM Recommender may not be available', _e);
       logProgress('IAM Recommender not available or no recommendations.');
     }
 

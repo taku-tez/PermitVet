@@ -3,6 +3,8 @@
  * Comprehensive CIS AWS/Azure/GCP Foundations Benchmark checks
  */
 
+import { logDebug } from '../utils';
+
 // Types imported as needed
 
 /** CIS Control check result */
@@ -157,15 +159,15 @@ export const CIS_AWS_V3_CONTROLS: CISControl[] = [
           status: hasDenyHttp ? 'PASS' : 'FAIL',
           message: hasDenyHttp ? 'HTTP requests denied' : 'No policy denying HTTP requests',
         };
-      } catch (e) {
-        const err = e as Error & { name?: string };
+      } catch (_e) {
+        const err = _e as Error & { name?: string };
         if (err.name === 'NoSuchBucketPolicy') {
           return {
             status: 'FAIL',
             message: 'No bucket policy configured',
           };
         }
-        throw e;
+        throw _e;
       }
     },
   },
@@ -220,7 +222,8 @@ export const CIS_AWS_V3_CONTROLS: CISControl[] = [
           status: enabled ? 'PASS' : 'INFO',
           message: enabled ? 'Object Lock enabled' : 'Object Lock not enabled',
         };
-      } catch {
+      } catch (_e) {
+        logDebug('Object Lock check failed', _e);
         return {
           status: 'INFO',
           message: 'Object Lock not configured',

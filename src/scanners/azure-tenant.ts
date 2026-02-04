@@ -4,7 +4,7 @@
  */
 
 import type { Finding, ScanOptions } from '../types';
-import { logProgress, logError, handleScanError } from '../utils';
+import { logProgress, logError, logDebug, handleScanError } from '../utils';
 
 // Azure SDK types
 interface ManagementGroup {
@@ -300,8 +300,8 @@ async function analyzeManagementGroupHierarchy(
             recurse: false,
           })) as ManagementGroup;
           await analyzeNode(childDetail, depth + 1);
-        } catch {
-          // Skip if can't access child
+        } catch (_e) {
+          logDebug("Skip if can't access child", _e);
         }
       }
     };
@@ -471,8 +471,8 @@ async function scanAllSubscriptions(
             });
           }
         }
-      } catch {
-        // Skip subscriptions we can't access
+      } catch (_e) {
+        logDebug('Operation skipped due to error', _e);
       }
     }
 
@@ -574,8 +574,8 @@ async function scanAccessibleSubscriptions(
             });
           }
         }
-      } catch {
-        // Skip
+      } catch (_e) {
+        logDebug('Skip', _e);
       }
     }
 

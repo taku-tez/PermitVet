@@ -4,7 +4,7 @@
  */
 
 import type { Finding, ScanOptions, Severity } from '../types';
-import { createFinding, handleScanError, logProgress, logError } from '../utils';
+import { createFinding, handleScanError, logProgress, logError, logDebug } from '../utils';
 
 interface DangerousPattern {
   pattern: RegExp;
@@ -60,30 +60,61 @@ export async function scanAWS(_options: ScanOptions = {}): Promise<Finding[]> {
     const credentialFindings = await scanCredentialReport(client);
     findings.push(...credentialFindings);
 
-    // 4. Users
+    // 4. Users (with pagination)
     logProgress('Scanning IAM users...');
-    const usersResponse = await client.send(new ListUsersCommand({}));
-    const users = usersResponse.Users || [];
+    const users: Array<{ UserName?: string; UserId?: string; Arn?: string; CreateDate?: Date }> =
+      [];
+    let usersMarker: string | undefined;
+    do {
+      const usersResponse = await client.send(new ListUsersCommand({ Marker: usersMarker }));
+      users.push(...(usersResponse.Users || []));
+      usersMarker = usersResponse.IsTruncated ? usersResponse.Marker : undefined;
+    } while (usersMarker);
+    logProgress(`Found ${users.length} IAM users`);
 
     for (const user of users) {
       const userFindings = await scanUser(client, user);
       findings.push(...userFindings);
     }
 
-    // 5. Roles
+    // 5. Roles (with pagination)
     logProgress('Scanning IAM roles...');
-    const rolesResponse = await client.send(new ListRolesCommand({}));
-    const roles = rolesResponse.Roles || [];
+    const roles: Array<{
+      RoleName?: string;
+      RoleId?: string;
+      Arn?: string;
+      AssumeRolePolicyDocument?: string;
+    }> = [];
+    let rolesMarker: string | undefined;
+    do {
+      const rolesResponse = await client.send(new ListRolesCommand({ Marker: rolesMarker }));
+      roles.push(...(rolesResponse.Roles || []));
+      rolesMarker = rolesResponse.IsTruncated ? rolesResponse.Marker : undefined;
+    } while (rolesMarker);
+    logProgress(`Found ${roles.length} IAM roles`);
 
     for (const role of roles) {
       const roleFindings = await scanRole(client, role);
       findings.push(...roleFindings);
     }
 
-    // 6. Customer Managed Policies
+    // 6. Customer Managed Policies (with pagination)
     logProgress('Scanning IAM policies...');
-    const policiesResponse = await client.send(new ListPoliciesCommand({ Scope: 'Local' }));
-    const policies = policiesResponse.Policies || [];
+    const policies: Array<{
+      PolicyName?: string;
+      PolicyId?: string;
+      Arn?: string;
+      DefaultVersionId?: string;
+    }> = [];
+    let policiesMarker: string | undefined;
+    do {
+      const policiesResponse = await client.send(
+        new ListPoliciesCommand({ Scope: 'Local', Marker: policiesMarker })
+      );
+      policies.push(...(policiesResponse.Policies || []));
+      policiesMarker = policiesResponse.IsTruncated ? policiesResponse.Marker : undefined;
+    } while (policiesMarker);
+    logProgress(`Found ${policies.length} customer managed policies`);
 
     for (const policy of policies) {
       const policyFindings = await scanPolicy(client, policy);
@@ -140,8 +171,8 @@ async function scanAccountSummary(
         )
       );
     }
-  } catch {
-    // Permission denied - skip
+  } catch (_e) {
+    logDebug('Permission denied - skip', _e);
   }
 
   return findings;
@@ -369,8 +400,8 @@ async function scanCredentialReport(
         }
       }
     }
-  } catch {
-    // Permission denied - skip
+  } catch (_e) {
+    logDebug('', _e);
   }
 
   return findings;
@@ -455,8 +486,8 @@ async function scanUser(
         });
       }
     }
-  } catch {
-    // Permission denied - skip
+  } catch (_e) {
+    logDebug('', _e);
   }
 
   return findings;
@@ -559,8 +590,8 @@ async function scanRole(
         findings.push(...policyFindings);
       }
     }
-  } catch {
-    // Permission denied - skip
+  } catch (_e) {
+    logDebug('', _e);
   }
 
   return findings;
@@ -744,8 +775,8 @@ async function analyzePolicyDocument(
         });
       }
     }
-  } catch {
-    // Permission denied or policy not found - skip
+  } catch (_e) {
+    logDebug('', _e);
   }
 
   return findings;

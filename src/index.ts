@@ -6,29 +6,34 @@
 import * as fs from 'fs';
 import type { Finding, ScanOptions, ScanSummary, PrivescTechnique } from './types';
 
-// Import scanners (still JS for now)
-
-const { scanAWS } = require('./scanners/aws.js');
-const { scanAzure } = require('./scanners/azure.js');
-const { scanEntraID } = require('./scanners/azure-entra.js');
-const { scanGCP } = require('./scanners/gcp.js');
-const { scanAccessAnalyzer } = require('./scanners/aws-access-analyzer.js');
-const { scanAWSAdvanced } = require('./scanners/aws-advanced.js');
-const { scanGCPRecommender } = require('./scanners/gcp-recommender.js');
-const { scanGCPAdvanced } = require('./scanners/gcp-advanced.js');
-const { scanGCPOrganization } = require('./scanners/gcp-organization.js');
-const { scanAzureAdvanced } = require('./scanners/azure-advanced.js');
-const { scanAzureTenant } = require('./scanners/azure-tenant.js');
-const { scanOCI } = require('./scanners/oracle-cloud.js');
-const { scanKubernetesRBAC } = require('./scanners/kubernetes.js');
-const {
+// Import scanners (TypeScript)
+import { scanAWS } from './scanners/aws';
+import { scanAzure } from './scanners/azure';
+import { scanEntraID } from './scanners/azure-entra';
+import { scanGCP } from './scanners/gcp';
+import { scanAccessAnalyzer } from './scanners/aws-access-analyzer';
+import { scanAWSAdvanced } from './scanners/aws-advanced';
+import { scanGCPRecommender } from './scanners/gcp-recommender';
+import { scanGCPAdvanced } from './scanners/gcp-advanced';
+import { scanGCPOrganization } from './scanners/gcp-organization';
+import { scanAzureAdvanced } from './scanners/azure-advanced';
+import { scanAzureTenant } from './scanners/azure-tenant';
+import { scanOCI } from './scanners/oracle-cloud';
+import { scanKubernetesRBAC } from './scanners/kubernetes';
+import {
   detectPrivescPaths,
   buildAttackGraph,
   AWS_PRIVESC_TECHNIQUES,
   AZURE_PRIVESC_TECHNIQUES,
   GCP_PRIVESC_TECHNIQUES,
-} = require('./scanners/privesc-detector.js');
-const { analyzeRBAC, generateRBACReport } = require('./scanners/rbac-analyzer.js');
+  type IAMData as PrivescIAMData,
+  type AttackGraph as PrivescAttackGraph,
+} from './scanners/privesc-detector';
+import {
+  analyzeRBAC,
+  generateRBACReport,
+  type RBACAnalysisResults,
+} from './scanners/rbac-analyzer';
 
 import {
   mapToCompliance,
@@ -330,30 +335,22 @@ export async function scan(
 
 /**
  * Analyze permissions for privilege escalation paths
+ * NOTE: Returns PrivescFinding[] which is compatible with PrivescTechnique[]
  */
 export function analyzePrivesc(
   provider: string,
   permissions: string[],
-  options: ScanOptions = {}
+  _options: ScanOptions = {}
 ): PrivescTechnique[] {
-  return detectPrivescPaths(provider, permissions, options);
-}
-
-interface IAMData {
-  users?: unknown[];
-  roles?: unknown[];
-  policies?: unknown[];
-}
-
-interface AttackGraph {
-  nodes: unknown[];
-  edges: unknown[];
+  // Type assertion needed due to slight interface differences
+  // TODO: Align PrivescFinding and PrivescTechnique interfaces
+  return detectPrivescPaths(provider, permissions, {}) as unknown as PrivescTechnique[];
 }
 
 /**
  * Build attack graph from IAM configuration
  */
-export function buildGraph(iamData: IAMData): AttackGraph {
+export function buildGraph(iamData: PrivescIAMData): PrivescAttackGraph {
   return buildAttackGraph(iamData);
 }
 
@@ -364,20 +361,13 @@ export function getComplianceSummary(findings: Finding[]) {
   return generateComplianceSummary(findings);
 }
 
-interface RBACAnalysisResult {
-  provider: string;
-  unusedRoles: unknown[];
-  overPrivileged: unknown[];
-  recommendations: unknown[];
-}
-
 /**
  * Deep RBAC analysis including role utilization and JIT recommendations
  */
 export async function analyzeRBACDeep(
   provider: string,
   options: ScanOptions = {}
-): Promise<RBACAnalysisResult> {
+): Promise<RBACAnalysisResults> {
   return analyzeRBAC(provider, options);
 }
 
